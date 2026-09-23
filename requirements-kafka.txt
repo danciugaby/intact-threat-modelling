@@ -1,0 +1,2 @@
+# Kafka worker (kafka_worker.py). Needs a prebuilt wheel or librdkafka headers to build.
+confluent-kafka==2.15.1

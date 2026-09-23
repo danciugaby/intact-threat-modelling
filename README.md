@@ -100,7 +100,8 @@ test fixtures with the LLM disabled.
 
 ### Kafka
 
-`python kafka_worker.py` reads requests from `KAFKA_REQUEST_TOPIC`. Results are published to
+The worker needs the optional Kafka client, installed with `pip install -r requirements-kafka.txt`.
+The Docker image already includes it. `python kafka_worker.py` reads requests from `KAFKA_REQUEST_TOPIC`. Results are published to
 `KAFKA_RESULT_TOPIC`, and failed requests go to `KAFKA_DLQ_TOPIC`. A request looks like:
 
 ```json

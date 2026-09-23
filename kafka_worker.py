@@ -24,7 +24,10 @@ import signal
 import uuid
 from datetime import datetime, timezone
 
-from confluent_kafka import Consumer, KafkaError, Producer
+try:  # optional dependency: pip install -r requirements-kafka.txt
+    from confluent_kafka import Consumer, KafkaError, Producer
+except ImportError:  # pragma: no cover - exercised only when Kafka support isn't installed
+    Consumer = KafkaError = Producer = None
 
 from app import create_app
 from app.config import Config
@@ -52,7 +55,13 @@ def handle(app, payload):
     raise ValueError(f"unknown request type '{kind}'")
 
 
+def _require_kafka():
+    if Consumer is None:
+        raise SystemExit("Kafka support is not installed: pip install -r requirements-kafka.txt")
+
+
 def consume():
+    _require_kafka()
     app = create_app()
     cfg = app.config
     consumer = Consumer({
@@ -101,6 +110,7 @@ def consume():
 
 
 def send_example():
+    _require_kafka()
     producer = Producer({"bootstrap.servers": Config.KAFKA_BOOTSTRAP_SERVERS})
     rid = str(uuid.uuid4())
     msg = {"request_id": rid, "type": "device", "pilot": "health",

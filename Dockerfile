@@ -3,8 +3,8 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY requirements.txt requirements-kafka.txt ./
+RUN pip install -r requirements.txt -r requirements-kafka.txt
 
 COPY app ./app
 COPY data ./data
