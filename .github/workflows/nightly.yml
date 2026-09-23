@@ -1,0 +1,55 @@
+name: Nightly
+
+# 1. Live tests against the real NVD / CISA KEV / FIRST EPSS APIs (and Groq if the
+#    GROQ_API_KEY secret exists) to catch upstream API changes early.
+# 2. Re-scan the published :main image for newly disclosed vulnerabilities.
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python scripts/update_data.py --dest data
+      - name: Live data-source tests
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CWEC_FILE_PATH: data/cwec_latest.xml
+        run: pytest -q -m live tests/live
+
+  image-rescan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:main" >> "$GITHUB_OUTPUT"
+      - name: Trivy scan of the published image
+        run: |
+          docker run --rm -v "$PWD:/out" \
+            -e TRIVY_USERNAME="${{ github.actor }}" -e TRIVY_PASSWORD="${{ secrets.GITHUB_TOKEN }}" \
+            aquasec/trivy:latest image --ignore-unfixed --severity CRITICAL,HIGH \
+            --format sarif --output /out/trivy.sarif "${{ steps.name.outputs.image }}"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy.sarif') != ''
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-image-nightly

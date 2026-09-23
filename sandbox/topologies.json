@@ -1,0 +1,58 @@
+{
+  "_comment": "Demo topologies for the sandbox. Asset names, links and CPEs are illustrative, not real pilot inventories. Asset attributes and relationship types follow the INTACT Risk Assessment asset format.",
+  "health": [
+    {"id": "h-fw", "name": "Hospital perimeter firewall", "cpe23name": "cpe:2.3:o:fortinet:fortios:7.2.0:*:*:*:*:*:*:*",
+     "attributes": [{"key": "internet_facing", "value": "true"}],
+     "relationships": [{"to": "h-web", "type": "CONNECTED_TO"}, {"to": "h-router", "type": "CONNECTED_TO"}]},
+    {"id": "h-web", "name": "Patient portal web server", "cpe23name": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*",
+     "attributes": [{"key": "internet_facing", "value": "true"}],
+     "relationships": [{"to": "h-pacs", "type": "COMMUNICATES_WITH"}]},
+    {"id": "h-router", "name": "Clinical network edge router", "cpe23name": "cpe:2.3:o:cisco:ios_xe:16.12.4:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": [{"to": "h-pacs", "type": "CONNECTED_TO"}, {"to": "h-miot-gw", "type": "CONNECTED_TO"}]},
+    {"id": "h-pacs", "name": "RIS/PACS server", "cpe23name": "cpe:2.3:a:openssl:openssl:3.0.0:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": [{"to": "h-mri", "type": "CONNECTED_TO"}]},
+    {"id": "h-miot-gw", "name": "Medical IoT gateway (nRF52840)", "cpe23name": "cpe:2.3:o:nordicsemi:nrf52840_firmware:-:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": []},
+    {"id": "h-mri", "name": "MRI scanner console", "attributes": [], "relationships": []}
+  ],
+  "telecom": [
+    {"id": "t-mec", "name": "MEC edge node (Kubernetes)", "cpe23name": "cpe:2.3:a:kubernetes:kubernetes:1.24.0:*:*:*:*:*:*:*",
+     "attributes": [{"key": "internet_facing", "value": "true"}],
+     "relationships": [{"to": "t-core", "type": "CONNECTED_TO"}, {"to": "t-grafana", "type": "HOSTS"}]},
+    {"id": "t-core", "name": "5G core (Open5GS)", "cpe23name": "cpe:2.3:a:open5gs:open5gs:2.6.0:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": [{"to": "t-ssh", "type": "MANAGES"}]},
+    {"id": "t-grafana", "name": "NOC monitoring dashboard", "cpe23name": "cpe:2.3:a:grafana:grafana:8.3.0:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": []},
+    {"id": "t-ssh", "name": "OpenStack controller (SSH)", "cpe23name": "cpe:2.3:a:openbsd:openssh:8.9:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": []}
+  ],
+  "transport": [
+    {"id": "v-ota", "name": "OTA update backend", "cpe23name": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*",
+     "attributes": [{"key": "internet_facing", "value": "true"}],
+     "relationships": [{"to": "v-broker", "type": "COMMUNICATES_WITH"}]},
+    {"id": "v-broker", "name": "Telematics MQTT broker", "cpe23name": "cpe:2.3:a:eclipse:mosquitto:2.0.10:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": [{"to": "v-tcu", "type": "CONNECTED_TO"}]},
+    {"id": "v-tcu", "name": "Telematics control unit (Linux)", "cpe23name": "cpe:2.3:o:linux:linux_kernel:5.10:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": [{"to": "v-fc-ecu", "type": "ATTACHED_TO"}]},
+    {"id": "v-fc-ecu", "name": "Fuel-cell ECU", "attributes": [], "relationships": []}
+  ],
+  "nuclear": [
+    {"id": "n-vpn", "name": "Remote-access VPN appliance", "cpe23name": "cpe:2.3:o:fortinet:fortios:7.2.0:*:*:*:*:*:*:*",
+     "attributes": [{"key": "internet_facing", "value": "true"}],
+     "relationships": [{"to": "n-noc", "type": "CONNECTED_TO"}]},
+    {"id": "n-noc", "name": "NOC monitoring dashboard", "cpe23name": "cpe:2.3:a:grafana:grafana:8.3.0:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": [{"to": "n-gw", "type": "MANAGES"}]},
+    {"id": "n-gw", "name": "Radiation-sensor edge gateway (Linux)", "cpe23name": "cpe:2.3:o:linux:linux_kernel:5.10:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": [{"to": "n-sensor", "type": "CONNECTED_TO"}]},
+    {"id": "n-sensor", "name": "Radiation sensor array", "attributes": [], "relationships": []}
+  ],
+  "smart_city": [
+    {"id": "c-portal", "name": "City data platform", "cpe23name": "cpe:2.3:a:grafana:grafana:8.3.0:*:*:*:*:*:*:*",
+     "attributes": [{"key": "internet_facing", "value": "true"}],
+     "relationships": [{"to": "c-broker", "type": "COMMUNICATES_WITH"}]},
+    {"id": "c-broker", "name": "IoT MQTT broker", "cpe23name": "cpe:2.3:a:eclipse:mosquitto:2.0.10:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": [{"to": "c-gw", "type": "CONNECTED_TO"}]},
+    {"id": "c-gw", "name": "Street-lighting gateway", "cpe23name": "cpe:2.3:o:cisco:ios_xe:16.12.4:*:*:*:*:*:*:*",
+     "attributes": [], "relationships": []}
+  ]
+}

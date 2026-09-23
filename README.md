@@ -1,5 +1,9 @@
 # INTACT Threat Modelling Service (v2)
 
+[![CI](https://github.com/danciugaby/intact-threat-modelling/actions/workflows/ci.yml/badge.svg)](https://github.com/danciugaby/intact-threat-modelling/actions/workflows/ci.yml)
+[![Publish image](https://github.com/danciugaby/intact-threat-modelling/actions/workflows/publish.yml/badge.svg)](https://github.com/danciugaby/intact-threat-modelling/actions/workflows/publish.yml)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/danciugaby/intact-threat-modelling?quickstart=1)
+
 This is the threat modelling module, adapted for the [INTACT](https://intact-horizon.eu/) Horizon Europe
 project. It began as the ENTRUST threat-modelling prototype. See [CHANGES.md](CHANGES.md) for what was
 fixed and what changed.
@@ -38,19 +42,32 @@ The weights and the standards lists are a starting point. Each pilot owner shoul
 
 ## Quick start
 
+**Try it in the browser:** open a Codespace with the badge above. The sandbox starts by itself: the
+API, plus a mock Risk Assessment service with a demo topology for each pilot. Run
+`bash sandbox/demo.sh health` or open `/api/docs` on forwarded port 5000. See
+[sandbox/README.md](sandbox/README.md).
+
+**Run the published image:**
+
 ```bash
-cp .env.example .env              # set GROQ_API_KEY, NVD_API_KEY, Keycloak, Risk Assessment URLs
-docker compose up --build         # API on :5000, Kafka worker, Postgres, Kafka
-# the image build downloads the latest MITRE CWE + CAPEC catalogues (not stored in git)
+docker run -p 5000:5000 -e LLM_PROVIDER=none ghcr.io/danciugaby/intact-threat-modelling:main
 ```
 
-To run locally without Docker:
+**Full stack** (API, Kafka worker, Postgres, Kafka):
 
 ```bash
-pip install -r requirements-dev.txt
-python scripts/update_data.py     # downloads CWE + CAPEC into data/ (required)
-LLM_PROVIDER=none flask --app run run     # dev server, no LLM
-pytest                            # 41 tests, no network needed (uses trimmed fixtures)
+cp .env.example .env              # set GROQ_API_KEY, NVD_API_KEY, Keycloak, Risk Assessment URLs
+docker compose up --build         # the build downloads the latest MITRE CWE + CAPEC catalogues
+```
+
+**Development:**
+
+```bash
+make install                      # pip install -r requirements-dev.txt
+python scripts/update_data.py     # downloads CWE + CAPEC into data/
+make sandbox                      # API + mock services (OFFLINE=1 / make sandbox-offline: no internet)
+make lint test cov                # ruff, 67 tests, coverage gate 85%
+make e2e                          # build the image and run end-to-end tests against it
 ```
 
 API docs are served at `/api/docs`, and the OpenAPI spec is at `/api/openapi.yaml`.
@@ -113,6 +130,29 @@ hops, scores them as step likelihood × target impact, and reports the choke-poi
 paths pass through. The mapping lives in `app/engine/topology.py`. Adjust it to match the Risk
 Assessment vocabulary.
 
+## Tests and CI/CD
+
+| Layer | What | Where / when |
+|---|---|---|
+| Unit, API, contract | 67 tests with recorded fixtures, no network. Includes an OpenAPI check that fails if an endpoint is undocumented. Coverage gate 85%. | `tests/`, every PR (Python 3.11 + 3.12) |
+| End-to-end | Real Docker image against mock Risk Assessment/NVD (`docker-compose.e2e.yml`). Covers device analysis, persistence, CSV, and async topology analysis for all 5 pilots. | `tests/e2e/`, every PR |
+| Live sources | Real NVD, CISA KEV, FIRST EPSS and Groq (if `GROQ_API_KEY` is set). Catches upstream API changes. | `tests/live/`, nightly |
+| Static | ruff lint, CodeQL (security-extended), pip-audit on pinned dependencies | every PR |
+| Image | Multi-arch build (amd64/arm64), SBOM and provenance attestations, Trivy scan into code scanning, keyless cosign signature | on `main` and `v*` tags; nightly re-scan |
+
+Workflows are in `.github/workflows/`:
+
+- `ci.yml`: lint, tests, dependency audit and end-to-end tests.
+- `publish.yml`: pushes to `ghcr.io/danciugaby/intact-threat-modelling`, and creates a GitHub
+  Release on `v*` tags.
+- `nightly.yml`: live-source tests and image re-scan.
+- `codeql.yml`: CodeQL security analysis.
+
+Dependabot keeps pip packages, the base image, GitHub Actions and the devcontainer up to date.
+
+To release, run `git tag v2.0.0 && git push --tags`. The workflow publishes `:2.0.0`, `:2.0` and
+`:latest`, then creates the release.
+
 ## Configuration
 
 All configuration is through environment variables. See `.env.example` and `app/config.py`. The
@@ -124,6 +164,7 @@ most important ones:
 - `AUTH_ENABLED=true` with the `KEYCLOAK_*` settings. The service verifies bearer tokens against the
   realm JWKS and can require a role.
 - `CORS_ORIGINS`. Set it to the dashboard origin(s). CORS is off by default.
+- `NVD_RATE_LIMIT`. Requests per 30 seconds. Override it only for a local NVD mirror or mock.
 - `RISK_ASSESSMENT_GET_ASSET_URL` and `RISK_ASSESSMENT_GET_TOPOLOGY_URL`. These are templates with
   `{asset_id}` / `{topology_id}` placeholders.
 

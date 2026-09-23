@@ -56,7 +56,8 @@ class ThreatModeler:
         self.cwe = cwe or CweCatalog(cfg["CWEC_FILE_PATH"])
         self.capec = capec or CapecCatalog(cfg.get("CAPEC_FILE_PATH"))
         self.nvd = nvd or NvdClient(cfg["NVD_API_URL"], cfg.get("NVD_API_KEY"), cfg.get("NVD_TIMEOUT", 30),
-                                    cfg.get("NVD_CACHE_TTL", 21600), cfg.get("NVD_MAX_RESULTS", 2000))
+                                    cfg.get("NVD_CACHE_TTL", 21600), cfg.get("NVD_MAX_RESULTS", 2000),
+                                    rate_limit=cfg.get("NVD_RATE_LIMIT"))
         self.kev = kev if kev is not None else (KevFeed(cfg["KEV_FEED_URL"], cfg.get("HTTP_TIMEOUT", 20))
                                                  if cfg.get("KEV_ENABLED") else None)
         self.epss = epss if epss is not None else (EpssClient(cfg["EPSS_API_URL"], cfg.get("HTTP_TIMEOUT", 20))

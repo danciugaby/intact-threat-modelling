@@ -145,14 +145,15 @@ class NvdClient:
     PAGE_SIZE = 2000
 
     def __init__(self, api_url, api_key=None, timeout=30, cache_ttl=21600, max_results=2000,
-                 session=None):
+                 session=None, rate_limit=None):
         self.api_url = api_url
         self.api_key = api_key
         self.timeout = timeout
         self.max_results = max_results
         self.session = session or requests.Session()
         # NVD public limits: 5 requests / 30 s without a key, 50 / 30 s with one.
-        self.limiter = RateLimiter(45 if api_key else 5, 30)
+        # rate_limit overrides this (e.g. for a local NVD mirror or mock).
+        self.limiter = RateLimiter(rate_limit or (45 if api_key else 5), 30)
         self.cache = TTLCache(cache_ttl)
 
     def _headers(self):

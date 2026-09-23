@@ -1,0 +1,41 @@
+[project]
+name = "intact-threat-modelling"
+version = "2.0.0"
+description = "INTACT threat modelling service"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+extend-exclude = ["Docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "S"]
+ignore = [
+    "S101",  # assert is fine in tests
+    "S314",  # XML parsed is the MITRE CWE/CAPEC catalogue we download ourselves, not user input
+    "B904",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S113", "BLE001"]
+"sandbox/**" = ["S104"]
+"app/engine/nvd.py" = ["E501"]  # official CPE 2.3 regex
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not e2e and not live' --strict-markers"
+markers = [
+    "e2e: end-to-end tests against a running container (see docker-compose.e2e.yml)",
+    "live: tests against real NVD/KEV/EPSS/Groq (nightly)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["app", "kafka_worker"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 85

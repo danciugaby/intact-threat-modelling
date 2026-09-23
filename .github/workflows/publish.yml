@@ -1,0 +1,124 @@
+name: Publish image
+
+# Builds, scans, signs and publishes the image to GitHub Container Registry:
+#   ghcr.io/<owner>/<repo>:main, :sha-<short>, :<version> and :latest on v* tags.
+# A GitHub Release with generated notes is created for v* tags.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write          # keyless cosign signing
+      security-events: write   # upload Trivy results to code scanning
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name (lower-case)
+        id: name
+        run: echo "image=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.title=INTACT Threat Modelling
+            org.opencontainers.image.description=Risk-ranked, pilot-aware threat models for IoT-to-cloud assets
+
+      - name: Build and push (amd64 + arm64, SBOM + provenance)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image with Trivy
+        run: |
+          docker run --rm -v "$PWD:/out" \
+            -e TRIVY_USERNAME="${{ github.actor }}" -e TRIVY_PASSWORD="${{ secrets.GITHUB_TOKEN }}" \
+            aquasec/trivy:latest image --ignore-unfixed --severity CRITICAL,HIGH \
+            --format sarif --output /out/trivy.sarif \
+            "${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}"
+          docker run --rm \
+            -e TRIVY_USERNAME="${{ github.actor }}" -e TRIVY_PASSWORD="${{ secrets.GITHUB_TOKEN }}" \
+            aquasec/trivy:latest image --ignore-unfixed --severity CRITICAL --exit-code 0 \
+            "${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy.sarif') != ''
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-image
+
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign image (keyless, GitHub OIDC)
+        run: cosign sign --yes "${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo "digest: ${{ steps.build.outputs.digest }}"
+            echo '```'
+            echo "Verify: \`cosign verify ${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }} --certificate-identity-regexp 'https://github.com/${{ github.repository }}/' --certificate-oidc-issuer https://token.actions.githubusercontent.com\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            Container image: `${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}`
+
+            ```bash
+            docker pull ${{ needs.image.outputs.image }}:${{ github.ref_name }}
+            ```

@@ -1,0 +1,33 @@
+### Health
+GET http://localhost:5000/health
+
+### Pilot profiles
+GET http://localhost:5000/pilots
+
+### Device threat model (health pilot)
+POST http://localhost:5000/analysis
+Content-Type: application/json
+
+{"device_data": {"cpe": "cpe:2.3:o:cisco:ios_xe:16.12.4:*:*:*:*:*:*:*", "deviceName": "Clinical edge router"},
+ "pilot": "health", "limit": 3}
+
+### Device threat model by name only (keyword search, noisier)
+POST http://localhost:5000/analysis
+Content-Type: application/json
+
+{"device_data": {"deviceName": "Eclipse Mosquitto"}, "pilot": "smart_city", "limit": 3}
+
+### Topology analysis for a demo topology (async)
+GET http://localhost:5000/topologies/nuclear/analysis?pilot=nuclear&limit=3&async=true
+
+### Poll a job (paste the job_id)
+GET http://localhost:5000/jobs/JOB_ID
+
+### Single asset from the mock Risk Assessment service
+GET http://localhost:5000/analysis/asset/h-web?pilot=health
+
+### Stored threat models
+GET http://localhost:5000/threat-models?limit=5
+
+### CSV export
+GET http://localhost:5000/datasets/vulnerabilities?limit=20

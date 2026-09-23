@@ -50,6 +50,9 @@ class Config:
     NVD_API_KEY = os.getenv("NVD_API_KEY")  # strongly recommended: 50 req/30s instead of 5
     NVD_TIMEOUT = _float("NVD_TIMEOUT", 30)
     NVD_CACHE_TTL = _int("NVD_CACHE_TTL", 6 * 3600)
+    # Requests per 30 s. Default follows NVD's public limits (5, or 50 with a key);
+    # raise it only for a local mirror or mock.
+    NVD_RATE_LIMIT = _int("NVD_RATE_LIMIT", 0) or None
     EPSS_ENABLED = _bool("EPSS_ENABLED", True)
     EPSS_API_URL = os.getenv("EPSS_API_URL", "https://api.first.org/data/v1/epss")
     KEV_FEED_URL = os.getenv(
