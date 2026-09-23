@@ -16,8 +16,8 @@ jobs:
   live-sources:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -38,7 +38,7 @@ jobs:
       packages: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Image name
         id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:main" >> "$GITHUB_OUTPUT"
@@ -48,7 +48,7 @@ jobs:
             -e TRIVY_USERNAME="${{ github.actor }}" -e TRIVY_PASSWORD="${{ secrets.GITHUB_TOKEN }}" \
             aquasec/trivy:latest image --ignore-unfixed --severity CRITICAL,HIGH \
             --format sarif --output /out/trivy.sarif "${{ steps.name.outputs.image }}"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('trivy.sarif') != ''
         with:
           sarif_file: trivy.sarif
