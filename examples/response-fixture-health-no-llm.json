@@ -1,0 +1,186 @@
+{
+ "name": "Hospital edge router",
+ "cpe": "cpe:2.3:o:cisco:ios_xe:16.12.4:*:*:*:*:*:*:*",
+ "pilot": {
+  "key": "health",
+  "name": "PUC2 - Health 4.0",
+  "safety_critical": true
+ },
+ "device": {
+  "deviceName": "Hospital edge router",
+  "cpe": "cpe:2.3:o:cisco:ios_xe:16.12.4:*:*:*:*:*:*:*"
+ },
+ "vulnerabilities": [
+  {
+   "id": "CVE-2023-20198",
+   "name": "Vendor product vulnerability CVE-2023-20198",
+   "description": "Cisco IOS XE web UI privilege escalation allowing a remote, unauthenticated attacker to create an account with privilege level 15.",
+   "published": "2023-10-16",
+   "cvss_vector": [
+    "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+   ],
+   "cpes": [
+    "cpe:2.3:o:cisco:ios_xe:16.12.4:*:*:*:*:*:*:*"
+   ],
+   "cwe_ids": [
+    420
+   ],
+   "risk": {
+    "score": 100.0,
+    "priority": "P1",
+    "components": {
+     "severity": 1.0,
+     "exploit": 1.0,
+     "impact": 1.0,
+     "exposure": 1.0
+    },
+    "cvss": {
+     "version": "3.1",
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+     "base_score": 10.0,
+     "severity": "CRITICAL",
+     "source": "nvd@nist.gov"
+    },
+    "attack_vector": "network",
+    "cia_impact": {
+     "C": 1.0,
+     "I": 1.0,
+     "A": 1.0
+    },
+    "known_exploited": true,
+    "kev": {
+     "date_added": "2023-10-16",
+     "due_date": "2023-10-20",
+     "required_action": "Apply mitigations per vendor instructions.",
+     "name": "Vendor product vulnerability CVE-2023-20198"
+    },
+    "epss": null,
+    "epss_percentile": null,
+    "safety_relevant": true,
+    "rationale": [
+     "CVSS 3.1 base 10.0 (CRITICAL)",
+     "Known exploited (CISA KEV, added 2023-10-16)",
+     "Confidentiality impact weighted for PUC2 - Health 4.0",
+     "Attack vector: network",
+     "High integrity/availability impact in a safety-critical pilot"
+    ]
+   },
+   "references": [
+    "https://nvd.nist.gov/vuln/detail/CVE-2023-20198"
+   ],
+   "threats": [
+    {
+     "id": 0,
+     "name": "Unprotected Alternate Channel",
+     "cwe_id": 420,
+     "description": "Unprotected Alternate Channel exploited via CVE-2023-20198\nEntry point: network access to Hospital edge router\nSteps: Cisco IOS XE web UI privilege escalation allowing a remote, unauthenticated attacker to create an account with privilege level 15.\nImpact: safety: Potential safety impact - review with the safety case owner",
+     "scenarios": [
+      {
+       "title": "Unprotected Alternate Channel exploited via CVE-2023-20198",
+       "threat_actor": "External attacker",
+       "entry_point": "network access to Hospital edge router",
+       "preconditions": [
+        "Device runs an affected version (CVE-2023-20198)",
+        "Attacker has network access"
+       ],
+       "steps": [
+        "Cisco IOS XE web UI privilege escalation allowing a remote, unauthenticated attacker to create an account with privilege level 15."
+       ],
+       "impact": {
+        "confidentiality": "",
+        "integrity": "",
+        "availability": "",
+        "safety": "Potential safety impact - review with the safety case owner"
+       },
+       "likelihood": "high",
+       "detection": [],
+       "mitigations": [
+        "Identify all alternate channels and use the same protection mechanisms as for the primary channel."
+       ],
+       "cwe_ids": [
+        420
+       ],
+       "attack_techniques": [],
+       "generated_by": "deterministic"
+      }
+     ],
+     "capec": [],
+     "attack_techniques": [],
+     "mitigations": [
+      {
+       "id": null,
+       "phases": [
+        "Architecture and Design"
+       ],
+       "strategy": null,
+       "effectiveness": null,
+       "description": "Identify all alternate channels and use the same protection mechanisms as for the primary channel."
+      }
+     ],
+     "attributes": [
+      {
+       "key": "capec",
+       "value": []
+      },
+      {
+       "key": "mitigations",
+       "value": [
+        "Identify all alternate channels and use the same protection mechanisms as for the primary channel."
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "summary": {
+  "by_priority": {
+   "P1": 1,
+   "P2": 0,
+   "P3": 0,
+   "P4": 0
+  },
+  "known_exploited": [
+   "CVE-2023-20198"
+  ],
+  "safety_relevant": [
+   "CVE-2023-20198"
+  ],
+  "highest_risk": {
+   "id": "CVE-2023-20198",
+   "score": 100.0,
+   "priority": "P1"
+  },
+  "not_analysed": 4,
+  "regulatory_references": [
+   "EU MDR 2017/745 (Annex I 17.2/17.4)",
+   "MDCG 2019-16",
+   "IEC 81001-5-1",
+   "IEC 80001-1",
+   "GDPR Art. 9 & 32",
+   "NIS2 Directive"
+  ]
+ },
+ "metadata": {
+  "generated_at": "2026-09-23T00:00:00+00:00",
+  "search_method": "cpe",
+  "cves_found": 5,
+  "cves_selected": 1,
+  "selection": "risk-ranked (CVSS, KEV, EPSS, pilot C/I/A weighting, attack vector)",
+  "sources": {
+   "nvd": "NVD CVE API 2.0",
+   "cwe_version": "test-4.13",
+   "capec_version": "test",
+   "kev": "disabled",
+   "epss": "disabled"
+  },
+  "llm": {
+   "provider": "none"
+  },
+  "timings_seconds": {
+   "threat_landscape": 0.0,
+   "risk_ranking": 0.0,
+   "mapping_and_scenarios": 0.0
+  }
+ }
+}

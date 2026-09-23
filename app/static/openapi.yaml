@@ -1,0 +1,214 @@
+openapi: 3.0.3
+info:
+  title: INTACT Threat Modelling API
+  version: 2.0.0
+  description: |
+    Builds risk-ranked, pilot-aware threat models for IoT/edge/cloud assets from NVD, CISA KEV,
+    FIRST EPSS and MITRE CWE/CAPEC data, with Groq-generated attack scenarios, and computes
+    lateral-movement paths over Risk Assessment topologies.
+    Long-running calls accept `?async=true` and return a job to poll at `/jobs/{job_id}`.
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    pilot:
+      in: query
+      name: pilot
+      schema: {type: string, enum: [telecom, health, transport, nuclear, smart_city, generic]}
+      description: INTACT pilot profile (aliases PUC1-PUC4 accepted).
+    async:
+      in: query
+      name: async
+      schema: {type: boolean, default: false}
+    limit:
+      in: query
+      name: limit
+      schema: {type: integer, minimum: 1, maximum: 50}
+      description: CVEs kept per device after risk ranking (default THREAT_MODEL_LIMIT).
+    offset:
+      in: query
+      name: offset
+      schema: {type: integer, minimum: 0}
+  schemas:
+    DeviceData:
+      type: object
+      description: Needs `cpe` (or legacy `cpeName` / `cpe23name`) or `deviceName`. A CPE is strongly recommended.
+      properties:
+        cpe: {type: string, example: "cpe:2.3:o:cisco:ios_xe:16.12.4:*:*:*:*:*:*:*"}
+        cpeName: {type: string, deprecated: true}
+        deviceName: {type: string, example: Hospital edge router}
+        description: {type: string}
+        role: {type: string}
+        location: {type: string}
+        exposure: {type: string, example: internet-facing}
+    AnalysisRequest:
+      type: object
+      required: [device_data]
+      properties:
+        device_data: {$ref: '#/components/schemas/DeviceData'}
+        pilot: {type: string, example: health}
+        limit: {type: integer, example: 5}
+    Risk:
+      type: object
+      properties:
+        score: {type: number, description: 0-100 priority score}
+        priority: {type: string, enum: [P1, P2, P3, P4]}
+        components: {type: object}
+        cvss: {type: object, nullable: true}
+        attack_vector: {type: string, nullable: true}
+        known_exploited: {type: boolean}
+        kev: {type: object, nullable: true}
+        epss: {type: number, nullable: true}
+        epss_percentile: {type: number, nullable: true}
+        safety_relevant: {type: boolean}
+        rationale: {type: array, items: {type: string}}
+    Scenario:
+      type: object
+      properties:
+        title: {type: string}
+        threat_actor: {type: string}
+        entry_point: {type: string}
+        preconditions: {type: array, items: {type: string}}
+        steps: {type: array, items: {type: string}}
+        impact: {type: object, properties: {confidentiality: {type: string}, integrity: {type: string}, availability: {type: string}, safety: {type: string}}}
+        likelihood: {type: string, enum: [low, medium, high]}
+        detection: {type: array, items: {type: string}}
+        mitigations: {type: array, items: {type: string}}
+        cwe_ids: {type: array, items: {type: integer}}
+        attack_techniques: {type: array, items: {type: string}}
+        generated_by: {type: string, enum: [llm, deterministic]}
+    Threat:
+      type: object
+      properties:
+        id: {type: integer}
+        name: {type: string, description: CWE name}
+        cwe_id: {type: integer, nullable: true}
+        description: {type: string, description: Legacy text rendering of the scenarios}
+        scenarios: {type: array, items: {$ref: '#/components/schemas/Scenario'}}
+        capec: {type: array, items: {type: object}}
+        attack_techniques: {type: array, items: {type: string}}
+        mitigations: {type: array, items: {type: object}}
+        attributes: {type: array, description: 'Legacy list of {key: capec or mitigations, value: [...]}', items: {type: object}}
+    Vulnerability:
+      type: object
+      properties:
+        id: {type: string, example: CVE-2023-20198}
+        name: {type: string}
+        description: {type: string}
+        published: {type: string, format: date}
+        cvss_vector: {type: array, items: {type: string}}
+        cpes: {type: array, items: {type: string}}
+        cwe_ids: {type: array, items: {type: integer}}
+        risk: {$ref: '#/components/schemas/Risk'}
+        references: {type: array, items: {type: string}}
+        threats: {type: array, items: {$ref: '#/components/schemas/Threat'}}
+    ThreatModel:
+      type: object
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        cpe: {type: string, nullable: true}
+        pilot: {type: object}
+        device: {type: object}
+        vulnerabilities: {type: array, items: {$ref: '#/components/schemas/Vulnerability'}}
+        summary: {type: object}
+        metadata: {type: object}
+        BENCHMARK_COMPUTE_TIME: {type: number}
+    Job:
+      type: object
+      properties:
+        job_id: {type: string}
+        kind: {type: string}
+        status: {type: string, enum: [queued, running, done, failed]}
+        result: {type: object}
+        error: {type: string}
+    Error:
+      type: object
+      properties: {error: {type: string}}
+security:
+  - bearer: []
+paths:
+  /health:
+    get:
+      summary: Liveness/readiness and configuration status
+      security: []
+      responses: {'200': {description: OK}, '503': {description: Degraded}}
+  /pilots:
+    get:
+      summary: List INTACT pilot profiles
+      responses: {'200': {description: OK}}
+  /analysis:
+    post:
+      summary: Threat model for one device
+      parameters: [{$ref: '#/components/parameters/async'}, {$ref: '#/components/parameters/pilot'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/AnalysisRequest'}}}
+      responses:
+        '200': {description: Threat model, content: {application/json: {schema: {$ref: '#/components/schemas/ThreatModel'}}}}
+        '202': {description: Job accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Job'}}}}
+        '400': {description: Invalid input, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {description: Unauthenticated}
+        '502': {description: NVD unavailable}
+  /analysis/asset/{asset_id}:
+    get:
+      summary: Threat model for an asset fetched from the Risk Assessment service
+      parameters:
+        - {in: path, name: asset_id, required: true, schema: {type: string}}
+        - {$ref: '#/components/parameters/pilot'}
+        - {$ref: '#/components/parameters/limit'}
+        - {$ref: '#/components/parameters/async'}
+      responses: {'200': {description: Threat model}, '202': {description: Job accepted}, '404': {description: Asset not found}}
+  /threat-models/{topology_id}:
+    get:
+      summary: Topology analysis (legacy path; same as /topologies/{topology_id}/analysis)
+      parameters:
+        - {in: path, name: topology_id, required: true, schema: {type: string}}
+        - {$ref: '#/components/parameters/pilot'}
+        - {$ref: '#/components/parameters/limit'}
+        - {$ref: '#/components/parameters/async'}
+      responses:
+        '200':
+          description: |
+            `{topology_id, pilot, results: [<threat model per asset>..., {topology_analysis, attack_paths,
+            entry_points, choke_points, summary, timings}]}`
+        '202': {description: Job accepted}
+        '404': {description: Topology empty or not found}
+  /topologies/{topology_id}/analysis:
+    get:
+      summary: Topology analysis
+      parameters:
+        - {in: path, name: topology_id, required: true, schema: {type: string}}
+        - {$ref: '#/components/parameters/pilot'}
+        - {$ref: '#/components/parameters/async'}
+      responses: {'200': {description: 'Same response as the legacy topology path'}}
+  /threat-models:
+    get:
+      summary: Stored threat models (newest first)
+      parameters: [{$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/offset'}, {$ref: '#/components/parameters/pilot'}]
+      responses: {'200': {description: OK}}
+  /threat-models/by-id/{id}:
+    get:
+      summary: One stored threat model
+      parameters: [{in: path, name: id, required: true, schema: {type: integer}}]
+      responses: {'200': {description: OK}, '404': {description: Not found}}
+  /jobs/{job_id}:
+    get:
+      summary: Background job status/result
+      parameters: [{in: path, name: job_id, required: true, schema: {type: string}}]
+      responses: {'200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Job'}}}}}
+  /datasets/threat-models:
+    get:
+      summary: CSV export of threat models
+      parameters: [{$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/offset'}]
+      responses: {'200': {description: CSV, content: {text/csv: {}}}}
+  /datasets/vulnerabilities:
+    get:
+      summary: CSV export of vulnerabilities (with risk score, priority, KEV, EPSS)
+      parameters: [{$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/offset'}]
+      responses: {'200': {description: CSV, content: {text/csv: {}}}}
+  /datasets/threats:
+    get:
+      summary: CSV export of threats (CWE, CAPEC, ATT&CK)
+      parameters: [{$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/offset'}]
+      responses: {'200': {description: CSV, content: {text/csv: {}}}}

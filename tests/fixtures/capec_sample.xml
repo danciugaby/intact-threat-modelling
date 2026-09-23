@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Trimmed CAPEC sample used by the unit tests only. ATT&CK mappings here are test data. -->
+<Attack_Pattern_Catalog xmlns="http://capec.mitre.org/capec-3" Name="CAPEC" Version="test" Date="2024-01-01">
+ <Attack_Patterns>
+  <Attack_Pattern ID="88" Name="OS Command Injection" Abstraction="Standard" Status="Draft">
+   <Likelihood_Of_Attack>High</Likelihood_Of_Attack><Typical_Severity>High</Typical_Severity>
+   <Taxonomy_Mappings><Taxonomy_Mapping Taxonomy_Name="ATTACK"><Entry_ID>1059</Entry_ID><Entry_Name>Command and Scripting Interpreter</Entry_Name></Taxonomy_Mapping></Taxonomy_Mappings>
+  </Attack_Pattern>
+  <Attack_Pattern ID="15" Name="Command Delimiters" Abstraction="Standard" Status="Draft"><Typical_Severity>High</Typical_Severity></Attack_Pattern>
+  <Attack_Pattern ID="1" Name="Deprecated one" Status="Deprecated"/>
+ </Attack_Patterns>
+</Attack_Pattern_Catalog>

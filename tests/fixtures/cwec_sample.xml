@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-written CWE sample for unit tests (structure follows the MITRE CWE 7.x schema). -->
+<Weakness_Catalog xmlns="http://cwe.mitre.org/cwe-7" xmlns:xhtml="http://www.w3.org/1999/xhtml" Name="CWE" Version="test-4.13" Date="2023-10-26">
+ <Weaknesses>
+  <Weakness ID="78" Name="Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')" Abstraction="Base" Structure="Simple" Status="Stable">
+   <Description>The product constructs all or part of an OS command using externally-influenced input.</Description>
+   <Likelihood_Of_Exploit>High</Likelihood_Of_Exploit>
+   <Common_Consequences>
+    <Consequence><Scope>Confidentiality</Scope><Scope>Integrity</Scope><Scope>Availability</Scope><Impact>Execute Unauthorized Code or Commands</Impact><Impact>Read Application Data</Impact><Impact>DoS: Crash, Exit, or Restart</Impact></Consequence>
+   </Common_Consequences>
+   <Potential_Mitigations>
+    <Mitigation Mitigation_ID="MIT-1"><Phase>Architecture and Design</Phase><Description>If at all possible, use library calls rather than external processes to recreate the desired functionality.</Description></Mitigation>
+    <Mitigation><Phase>Implementation</Phase><Strategy>Input Validation</Strategy><Description>
+     <xhtml:p>Assume all input is malicious.</xhtml:p>
+     <xhtml:p>Use an allowlist of acceptable inputs.</xhtml:p>
+    </Description><Effectiveness>High</Effectiveness></Mitigation>
+    <Mitigation><Phase>Operation</Phase><Description>Run the code with the lowest privileges required.</Description></Mitigation>
+   </Potential_Mitigations>
+   <Related_Attack_Patterns>
+    <Related_Attack_Pattern CAPEC_ID="108"/><Related_Attack_Pattern CAPEC_ID="15"/><Related_Attack_Pattern CAPEC_ID="43"/><Related_Attack_Pattern CAPEC_ID="6"/><Related_Attack_Pattern CAPEC_ID="88"/>
+   </Related_Attack_Patterns>
+  </Weakness>
+  <Weakness ID="77" Name="Improper Neutralization of Special Elements used in a Command ('Command Injection')" Abstraction="Class" Status="Draft">
+   <Description>The product constructs a command using externally-influenced input.</Description>
+   <Common_Consequences><Consequence><Scope>Integrity</Scope><Impact>Execute Unauthorized Code or Commands</Impact></Consequence></Common_Consequences>
+   <Potential_Mitigations><Mitigation><Phase>Implementation</Phase><Description>Properly quote arguments and escape special characters.</Description></Mitigation></Potential_Mitigations>
+   <Related_Attack_Patterns><Related_Attack_Pattern CAPEC_ID="15"/></Related_Attack_Patterns>
+  </Weakness>
+  <Weakness ID="400" Name="Uncontrolled Resource Consumption" Abstraction="Class" Status="Draft">
+   <Description>The product does not properly control the allocation and maintenance of a limited resource.</Description>
+   <Common_Consequences><Consequence><Scope>Availability</Scope><Impact>DoS: Resource Consumption (CPU)</Impact></Consequence></Common_Consequences>
+   <Potential_Mitigations><Mitigation><Phase>Architecture and Design</Phase><Description>Design throttling mechanisms into the system architecture.</Description></Mitigation></Potential_Mitigations>
+   <Related_Attack_Patterns><Related_Attack_Pattern CAPEC_ID="147"/></Related_Attack_Patterns>
+  </Weakness>
+  <Weakness ID="420" Name="Unprotected Alternate Channel" Abstraction="Base" Status="Draft">
+   <Description>The product protects a primary channel, but it does not use the same level of protection for an alternate channel.</Description>
+   <Common_Consequences><Consequence><Scope>Access Control</Scope><Impact>Gain Privileges or Assume Identity</Impact></Consequence></Common_Consequences>
+   <Potential_Mitigations><Mitigation><Phase>Architecture and Design</Phase><Description>Identify all alternate channels and use the same protection mechanisms as for the primary channel.</Description></Mitigation></Potential_Mitigations>
+  </Weakness>
+  <Weakness ID="787" Name="Out-of-bounds Write" Abstraction="Base" Status="Stable">
+   <Description>The product writes data past the end, or before the beginning, of the intended buffer.</Description>
+   <Potential_Mitigations>
+    <Mitigation><Phase>Requirements</Phase><Strategy>Language Selection</Strategy><Description>Use a language that does not allow this weakness to occur.</Description></Mitigation>
+    <Mitigation><Phase>Build and Compilation</Phase><Description>
+     <xhtml:p>Run or compile the software using features that provide automatic protection.</xhtml:p>
+     <xhtml:ul><xhtml:li>Stack canaries</xhtml:li><xhtml:li>ASLR</xhtml:li></xhtml:ul>
+    </Description></Mitigation>
+   </Potential_Mitigations>
+  </Weakness>
+ </Weaknesses>
+</Weakness_Catalog>

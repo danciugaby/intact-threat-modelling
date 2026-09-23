@@ -1,0 +1,42 @@
+# Local stack: API + Kafka worker + Postgres + Kafka (KRaft). For INTACT integration,
+# point RISK_ASSESSMENT_* and KEYCLOAK_* at the consortium services in .env.
+services:
+  threat-modelling:
+    build: .
+    env_file: .env
+    environment:
+      SQLALCHEMY_DATABASE_URI: postgresql://tm:tm@db:5432/threat_modelling
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports: ["5000:5000"]
+    depends_on: [db]
+
+  threat-modelling-worker:
+    build: .
+    command: ["python", "kafka_worker.py"]
+    env_file: .env
+    environment:
+      SQLALCHEMY_DATABASE_URI: postgresql://tm:tm@db:5432/threat_modelling
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on: [db, kafka]
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tm
+      POSTGRES_PASSWORD: tm
+      POSTGRES_DB: threat_modelling
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+
+  kafka:
+    image: bitnami/kafka:3.7
+    environment:
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+volumes:
+  pgdata:
