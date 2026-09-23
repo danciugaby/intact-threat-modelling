@@ -1,0 +1,33 @@
+# End-to-end test stack used by CI: the real image + mock Risk Assessment / NVD.
+#   docker compose -f docker-compose.e2e.yml up -d --build --wait
+#   E2E_BASE_URL=http://localhost:5000 pytest -m e2e tests/e2e
+services:
+  mock:
+    image: ${E2E_IMAGE:-intact-threat-modelling:e2e}
+    build: .
+    command: ["python", "/src/sandbox/mock_services.py", "--port", "5100"]
+    volumes: ["./sandbox:/src/sandbox:ro", "./tests/fixtures:/src/tests/fixtures:ro"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5100/health', timeout=3)"]
+      interval: 2s
+      retries: 30
+
+  api:
+    image: ${E2E_IMAGE:-intact-threat-modelling:e2e}
+    build: .
+    ports: ["5000:5000"]
+    environment:
+      LLM_PROVIDER: none
+      AUTH_ENABLED: "false"
+      KEV_ENABLED: "false"
+      EPSS_ENABLED: "false"
+      NVD_API_URL: http://mock:5100/nvd/rest/json/cves/2.0
+      NVD_RATE_LIMIT: "1000"
+      RISK_ASSESSMENT_GET_TOPOLOGY_URL: http://mock:5100/ra/topologies/{topology_id}/assets
+      RISK_ASSESSMENT_GET_ASSET_URL: http://mock:5100/ra/assets/{asset_id}
+    depends_on:
+      mock: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 2s
+      retries: 60

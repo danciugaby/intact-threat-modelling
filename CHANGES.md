@@ -43,3 +43,24 @@
 - `topology_analysis` items gain `relationship`, `channel`, `likelihood`, `verified_vector`; extra keys `attack_paths`, `entry_points`, `choke_points`, `summary` sit in the same final result object.
 - Order of `vulnerabilities` is now by risk score, not publish date.
 - Errors: 400 invalid input, 401/403 auth, 404 not found, 502 NVD unavailable, 503 RA not configured.
+
+## v2.1 – tests, CI/CD, sandbox
+- **Tests:** there are now 67 of them (up from 41). New coverage includes the KEV and EPSS
+  clients, retry and failure paths, the Kafka worker loop, an OpenAPI route-coverage check and a
+  check that the example stays in sync. Coverage is 92%, and CI fails below 85%. The new
+  end-to-end tests run against the built container, and the new live-source tests run nightly.
+- **CI/CD:** GitHub Actions now handles:
+  - lint, tests (Python 3.11 and 3.12) and pip-audit;
+  - end-to-end tests against the Docker image;
+  - CodeQL security analysis;
+  - publishing the image to GHCR, as multi-arch builds with SBOM and provenance, a Trivy scan and
+    a cosign signature;
+  - a GitHub Release on each tag;
+  - a nightly live-source check and image re-scan.
+- **Dependabot** now covers pip, Docker, Actions and the devcontainer.
+- **Sandbox:** added a GitHub Codespaces devcontainer and `sandbox/` with a mock Risk Assessment
+  service. It has a demo topology for each pilot, an offline NVD mode, a demo script and
+  REST-client requests.
+- **Security:** bumped `cryptography` to 50.0.1, `PyJWT` to 2.13.0 and `python-dotenv` to 1.2.3.
+  pip-audit reported known vulnerabilities in the previous pins.
+- **Config:** added `NVD_RATE_LIMIT`, which overrides the NVD request rate for mirrors and mocks.
