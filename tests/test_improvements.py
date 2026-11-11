@@ -304,6 +304,11 @@ class _Msg:
         return 42
 
 
+class _TopicPartition:
+    def __init__(self, topic, partition, offset):
+        self.topic, self.partition, self.offset = topic, partition, offset
+
+
 def _run_worker(kafka_worker, app, msgs, producer):
     consumer = mock.Mock()
 
@@ -315,9 +320,11 @@ def _run_worker(kafka_worker, app, msgs, producer):
 
     consumer.poll.side_effect = poll
     kafka_worker.RUNNING = True
+    # confluent-kafka is optional (requirements-kafka.txt), so stand in for all of its classes
     with (mock.patch.object(kafka_worker, "create_app", return_value=app),
           mock.patch.object(kafka_worker, "Consumer", return_value=consumer),
           mock.patch.object(kafka_worker, "Producer", return_value=producer),
+          mock.patch.object(kafka_worker, "TopicPartition", _TopicPartition),
           mock.patch.object(kafka_worker.signal, "signal"),
           mock.patch.object(kafka_worker.time, "sleep")):
         kafka_worker.consume()
