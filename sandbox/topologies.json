@@ -10,10 +10,10 @@
     {"id": "h-router", "name": "Clinical network edge router", "cpe23name": "cpe:2.3:o:cisco:ios_xe:16.12.4:*:*:*:*:*:*:*",
      "attributes": [], "relationships": [{"to": "h-pacs", "type": "CONNECTED_TO"}, {"to": "h-miot-gw", "type": "CONNECTED_TO"}]},
     {"id": "h-pacs", "name": "RIS/PACS server", "cpe23name": "cpe:2.3:a:openssl:openssl:3.0.0:*:*:*:*:*:*:*",
-     "attributes": [], "relationships": [{"to": "h-mri", "type": "CONNECTED_TO"}]},
+     "attributes": [{"key": "criticality", "value": "high"}], "relationships": [{"to": "h-mri", "type": "CONNECTED_TO"}]},
     {"id": "h-miot-gw", "name": "Medical IoT gateway (nRF52840)", "cpe23name": "cpe:2.3:o:nordicsemi:nrf52840_firmware:-:*:*:*:*:*:*:*",
      "attributes": [], "relationships": []},
-    {"id": "h-mri", "name": "MRI scanner console", "attributes": [], "relationships": []}
+    {"id": "h-mri", "name": "MRI scanner console", "attributes": [{"key": "safety_critical", "value": "true"}, {"key": "criticality", "value": "critical"}], "relationships": []}
   ],
   "telecom": [
     {"id": "t-mec", "name": "MEC edge node (Kubernetes)", "cpe23name": "cpe:2.3:a:kubernetes:kubernetes:1.24.0:*:*:*:*:*:*:*",
@@ -33,8 +33,8 @@
     {"id": "v-broker", "name": "Telematics MQTT broker", "cpe23name": "cpe:2.3:a:eclipse:mosquitto:2.0.10:*:*:*:*:*:*:*",
      "attributes": [], "relationships": [{"to": "v-tcu", "type": "CONNECTED_TO"}]},
     {"id": "v-tcu", "name": "Telematics control unit (Linux)", "cpe23name": "cpe:2.3:o:linux:linux_kernel:5.10:*:*:*:*:*:*:*",
-     "attributes": [], "relationships": [{"to": "v-fc-ecu", "type": "ATTACHED_TO"}]},
-    {"id": "v-fc-ecu", "name": "Fuel-cell ECU", "attributes": [], "relationships": []}
+     "attributes": [{"key": "criticality", "value": "high"}], "relationships": [{"to": "v-fc-ecu", "type": "ATTACHED_TO"}]},
+    {"id": "v-fc-ecu", "name": "Fuel-cell ECU", "attributes": [{"key": "safety_critical", "value": "true"}, {"key": "criticality", "value": "critical"}], "relationships": []}
   ],
   "nuclear": [
     {"id": "n-vpn", "name": "Remote-access VPN appliance", "cpe23name": "cpe:2.3:o:fortinet:fortios:7.2.0:*:*:*:*:*:*:*",
@@ -43,8 +43,8 @@
     {"id": "n-noc", "name": "NOC monitoring dashboard", "cpe23name": "cpe:2.3:a:grafana:grafana:8.3.0:*:*:*:*:*:*:*",
      "attributes": [], "relationships": [{"to": "n-gw", "type": "MANAGES"}]},
     {"id": "n-gw", "name": "Radiation-sensor edge gateway (Linux)", "cpe23name": "cpe:2.3:o:linux:linux_kernel:5.10:*:*:*:*:*:*:*",
-     "attributes": [], "relationships": [{"to": "n-sensor", "type": "CONNECTED_TO"}]},
-    {"id": "n-sensor", "name": "Radiation sensor array", "attributes": [], "relationships": []}
+     "attributes": [{"key": "criticality", "value": "high"}], "relationships": [{"to": "n-sensor", "type": "CONNECTED_TO"}]},
+    {"id": "n-sensor", "name": "Radiation sensor array", "attributes": [{"key": "safety_critical", "value": "true"}, {"key": "criticality", "value": "critical"}], "relationships": []}
   ],
   "smart_city": [
     {"id": "c-portal", "name": "City data platform", "cpe23name": "cpe:2.3:a:grafana:grafana:8.3.0:*:*:*:*:*:*:*",

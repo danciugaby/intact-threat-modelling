@@ -3,10 +3,11 @@ import logging
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
-from ..auth import login_required
+from ..auth import PilotForbidden, allowed_pilots, check_pilot, login_required
 from ..engine.http import UpstreamError
 from ..engine.modeler import InvalidInput
-from ..engine.pilots import list_pilots
+from ..engine.pilots import get_pilot, list_pilots
+from ..jobs import JobQueueFull, expire_if_stale
 from ..models import (Job, ThreatModelRecord, db, export_threat_models, export_threats,
                       export_vulnerabilities)
 from ..risk_assessment import RiskAssessmentError
@@ -14,6 +15,7 @@ from .. import services
 
 log = logging.getLogger(__name__)
 bp = Blueprint("api", __name__)
+MAX_OFFSET = 10 ** 9
 
 
 # ---------------------------------------------------------------- helpers
@@ -50,6 +52,33 @@ def _upstream(exc):
 @bp.errorhandler(RiskAssessmentError)
 def _ra(exc):
     return jsonify({"error": str(exc)}), exc.status
+
+
+@bp.errorhandler(PilotForbidden)
+def _forbidden(exc):
+    return jsonify({"error": str(exc)}), 403
+
+
+@bp.errorhandler(JobQueueFull)
+def _busy(exc):
+    return jsonify({"error": str(exc)}), 429, {"Retry-After": "60"}
+
+
+def _visible(pilot_key, allowed):
+    return allowed is None or pilot_key in allowed
+
+
+def _pilot_key(value):
+    """Canonical pilot key for a name or alias (unknown values are returned unchanged)."""
+    if not value:
+        return value
+    profile = get_pilot(value)
+    return profile.key if profile else value
+
+
+def _record_pilot(doc):
+    p = (doc or {}).get("pilot")
+    return p.get("key") if isinstance(p, dict) else p
 
 
 # ---------------------------------------------------------------- endpoints
@@ -96,16 +125,23 @@ def analysis():
     # validate synchronously so async callers get a 400 immediately
     from ..engine.modeler import normalize_device
     normalize_device(body["device_data"])
-    services.modeler().resolve_pilot(pilot or body["device_data"].get("pilot"))
-    return _run("device", body, services.analyze_device, body["device_data"], pilot, limit)
+    allowed = allowed_pilots()
+    key = services.modeler().resolve_pilot(pilot or body["device_data"].get("pilot")
+                                            or body["device_data"].get("sector")).key
+    check_pilot(key, allowed)
+    return _run("device", dict(body, pilot=key), services.analyze_device, body["device_data"], pilot, limit,
+                allowed_pilots=allowed)
 
 
 @bp.get("/analysis/asset/<asset_id>")
 @login_required
 def analysis_asset(asset_id):
     pilot = request.args.get("pilot")
+    allowed = allowed_pilots()
+    if pilot:
+        check_pilot(services.modeler().resolve_pilot(pilot).key, allowed)
     return _run("asset", {"asset_id": asset_id, "pilot": pilot}, services.analyze_asset, asset_id, pilot,
-                _int_arg("limit", lo=1, hi=50))
+                _int_arg("limit", lo=1, hi=50), allowed_pilots=allowed)
 
 
 @bp.get("/threat-models/<topology_id>")
@@ -113,16 +149,19 @@ def analysis_asset(asset_id):
 @login_required
 def analysis_topology(topology_id):
     pilot = request.args.get("pilot")
-    services.modeler().resolve_pilot(pilot)
+    allowed = allowed_pilots()
+    if pilot:
+        check_pilot(services.modeler().resolve_pilot(pilot).key, allowed)
     return _run("topology", {"topology_id": topology_id, "pilot": pilot}, services.analyze_topology,
-                topology_id, pilot, _int_arg("limit", lo=1, hi=50))
+                topology_id, pilot, _int_arg("limit", lo=1, hi=50), allowed_pilots=allowed)
 
 
 @bp.get("/threat-models")
 @login_required
 def threat_models():
-    rows = ThreatModelRecord.page(limit=_int_arg("limit", 50, 1, 500), offset=_int_arg("offset", 0),
-                                  pilot=request.args.get("pilot"))
+    pilot = _pilot_key(request.args.get("pilot"))
+    rows = ThreatModelRecord.page(limit=_int_arg("limit", 50, 1, 500), offset=_int_arg("offset", 0, 0, MAX_OFFSET),
+                                  pilot=pilot, pilots=allowed_pilots())
     return jsonify([r.to_dict() for r in rows])
 
 
@@ -130,7 +169,7 @@ def threat_models():
 @login_required
 def threat_model_by_id(model_id):
     rec = db.session.get(ThreatModelRecord, model_id)
-    if not rec:
+    if not rec or not _visible(rec.pilot, allowed_pilots()):
         return jsonify({"error": "not found"}), 404
     return jsonify(rec.to_dict())
 
@@ -139,8 +178,14 @@ def threat_model_by_id(model_id):
 @login_required
 def job_status(job_id):
     job = db.session.get(Job, job_id)
+    allowed = allowed_pilots()
+    if job and allowed is not None:
+        resolved = {_pilot_key(k) for k in (_record_pilot(job.request), _record_pilot(job.result)) if k}
+        if not resolved or not resolved <= allowed:
+            job = None
     if not job:
         return jsonify({"error": "not found"}), 404
+    expire_if_stale(job, current_app.config.get("JOB_TIMEOUT_SECONDS", 3600))
     return jsonify(job.to_dict())
 
 
@@ -153,19 +198,22 @@ def _csv_response(content, filename):
 @bp.get("/datasets/threat-models")
 @login_required
 def datasets_threat_models():
-    return _csv_response(export_threat_models(_int_arg("limit", None, 1, 100000), _int_arg("offset")),
+    return _csv_response(export_threat_models(_int_arg("limit", None, 1, 100000), _int_arg("offset", 0, 0, MAX_OFFSET),
+                                 allowed_pilots()),
                          "threat_model_export.csv")
 
 
 @bp.get("/datasets/vulnerabilities")
 @login_required
 def datasets_vulnerabilities():
-    return _csv_response(export_vulnerabilities(_int_arg("limit", None, 1, 100000), _int_arg("offset")),
+    return _csv_response(export_vulnerabilities(_int_arg("limit", None, 1, 100000), _int_arg("offset", 0, 0, MAX_OFFSET),
+                                 allowed_pilots()),
                          "vulnerabilities_export.csv")
 
 
 @bp.get("/datasets/threats")
 @login_required
 def datasets_threats():
-    return _csv_response(export_threats(_int_arg("limit", None, 1, 100000), _int_arg("offset")),
+    return _csv_response(export_threats(_int_arg("limit", None, 1, 100000), _int_arg("offset", 0, 0, MAX_OFFSET),
+                                 allowed_pilots()),
                          "threat_export.csv")

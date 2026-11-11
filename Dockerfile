@@ -23,5 +23,7 @@ USER appuser
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=4).status==200 else 1)"
 
-# Threads, not processes: the CWE/CAPEC indexes are loaded once per worker process.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "8", "--timeout", "600", "run:app"]
+# One process, many threads: the work is I/O-bound, the CWE/CAPEC indexes, caches, async jobs
+# and the NVD rate limiter are per process, so one process keeps NVD within its limit.
+# Scale with more containers and split NVD_RATE_LIMIT between them (and the Kafka worker).
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "16", "--timeout", "600", "run:app"]

@@ -54,10 +54,12 @@ class ThreatModelRecord(db.Model):
         return doc
 
     @staticmethod
-    def page(limit=None, offset=None, pilot=None):
+    def page(limit=None, offset=None, pilot=None, pilots=None):
         q = ThreatModelRecord.query.order_by(ThreatModelRecord.id.desc())
         if pilot:
             q = q.filter_by(pilot=pilot)
+        if pilots is not None:
+            q = q.filter(ThreatModelRecord.pilot.in_(sorted(pilots)))
         if offset:
             q = q.offset(offset)
         if limit:
@@ -133,22 +135,32 @@ def _paged(query, limit, offset):
     return query.all()
 
 
-def export_threat_models(limit=None, offset=None):
-    rows = _paged(ThreatModelRecord.query.order_by(ThreatModelRecord.id), limit, offset)
+def _for_pilots(query, pilots, join=()):
+    if pilots is None:
+        return query
+    for rel in join:
+        query = query.join(rel)
+    return query.filter(ThreatModelRecord.pilot.in_(sorted(pilots)))
+
+
+def export_threat_models(limit=None, offset=None, pilots=None):
+    rows = _paged(_for_pilots(ThreatModelRecord.query, pilots).order_by(ThreatModelRecord.id), limit, offset)
     return _csv(["ID", "Name", "CPE", "Pilot", "Asset ID", "Created"],
                 [(r.id, r.name, r.cpe, r.pilot, r.asset_id, r.created_at) for r in rows])
 
 
-def export_vulnerabilities(limit=None, offset=None):
-    rows = _paged(VulnerabilityRecord.query.order_by(VulnerabilityRecord.id), limit, offset)
+def export_vulnerabilities(limit=None, offset=None, pilots=None):
+    q = _for_pilots(VulnerabilityRecord.query, pilots, join=(VulnerabilityRecord.threat_model,))
+    rows = _paged(q.order_by(VulnerabilityRecord.id), limit, offset)
     return _csv(["CVE ID", "Name", "Description", "CVSS Vector", "Risk Score", "Priority", "Known Exploited",
                  "EPSS", "Threat Model ID"],
                 [(r.cve_id, r.name, r.description, r.cvss_vector, r.risk_score, r.priority, r.known_exploited,
                   r.epss, r.threat_model_id) for r in rows])
 
 
-def export_threats(limit=None, offset=None):
-    rows = _paged(ThreatRecord.query.order_by(ThreatRecord.id), limit, offset)
+def export_threats(limit=None, offset=None, pilots=None):
+    q = _for_pilots(ThreatRecord.query, pilots, join=(ThreatRecord.vulnerability, VulnerabilityRecord.threat_model))
+    rows = _paged(q.order_by(ThreatRecord.id), limit, offset)
     return _csv(["ID", "Name", "CWE", "Description", "CAPEC IDs", "ATT&CK Techniques", "Vulnerability ID"],
                 [(r.id, r.name, r.cwe_id, r.description, r.capec_ids, r.attack_techniques, r.vulnerability_id)
                  for r in rows])

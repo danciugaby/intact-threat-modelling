@@ -7,7 +7,9 @@ services:
     environment:
       SQLALCHEMY_DATABASE_URI: postgresql://tm:tm@db:5432/threat_modelling
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-    ports: ["5000:5000"]
+      # the API and the worker each rate-limit NVD on their own: split the keyed limit (50/30 s)
+      NVD_RATE_LIMIT: ${API_NVD_RATE_LIMIT:-35}
+    ports: ["127.0.0.1:5000:5000"]
     depends_on: [db]
 
   threat-modelling-worker:
@@ -17,26 +19,33 @@ services:
     environment:
       SQLALCHEMY_DATABASE_URI: postgresql://tm:tm@db:5432/threat_modelling
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      NVD_RATE_LIMIT: ${WORKER_NVD_RATE_LIMIT:-10}
     depends_on: [db, kafka]
 
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: tm
-      POSTGRES_PASSWORD: tm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tm}
       POSTGRES_DB: threat_modelling
     volumes: ["pgdata:/var/lib/postgresql/data"]
 
   kafka:
-    image: bitnami/kafka:3.7
+    # bitnami/kafka versioned tags were withdrawn in 2025; this is the Apache image (KRaft, one node)
+    image: apache/kafka:3.9.1
     environment:
-      KAFKA_CFG_NODE_ID: "1"
-      KAFKA_CFG_PROCESS_ROLES: broker,controller
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
 volumes:
   pgdata:

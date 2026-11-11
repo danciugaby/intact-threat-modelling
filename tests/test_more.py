@@ -199,8 +199,10 @@ def test_topology_cycles_and_budget():
         }
         for i in range(8)
     }
-    r = topo.analyze(assets, max_depth=6, max_paths=10)
-    assert len(r["attack_paths"]) == 10
+    r = topo.analyze(assets, max_depth=6, max_paths=5)
+    # one best path per (entry, target): 7 targets reachable from the single entry point
+    assert r["paths_total"] == 7 and len(r["attack_paths"]) == 5
+    assert len({p["target_id"] for p in r["attack_paths"]}) == 5
     for p in r["attack_paths"]:
         assert len(p["assets"]) == len(set(p["assets"]))  # simple paths only
 
@@ -314,8 +316,17 @@ def test_example_response_matches_current_shape():
 
 # ------------------------------------------------------------------ Kafka worker loop
 class _Msg:
-    def __init__(self, value, key=b"k1", error=None):
-        self._v, self._k, self._e = value, key, error
+    def __init__(self, value, key=b"k1", error=None, offset=0):
+        self._v, self._k, self._e, self._o = value, key, error, offset
+
+    def topic(self):
+        return "threat-modeling-topic"
+
+    def partition(self):
+        return 0
+
+    def offset(self):
+        return self._o
 
     def value(self):
         return self._v
@@ -346,6 +357,7 @@ def test_kafka_consume_publishes_results_and_dlq(make_app):
 
     consumer.poll.side_effect = poll
     producer = mock.Mock()
+    producer.flush.return_value = 0  # everything delivered
     kafka_worker.RUNNING = True
     with (
         mock.patch.object(kafka_worker, "create_app", return_value=app),

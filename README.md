@@ -66,7 +66,7 @@ docker compose up --build         # the build downloads the latest MITRE CWE + C
 make install                      # pip install -r requirements-dev.txt
 python scripts/update_data.py     # downloads CWE + CAPEC into data/
 make sandbox                      # API + mock services (OFFLINE=1 / make sandbox-offline: no internet)
-make lint test cov                # ruff, 67 tests, coverage gate 85%
+make lint test cov                # ruff, 89 tests, coverage gate 85%
 make e2e                          # build the image and run end-to-end tests against it
 ```
 
@@ -122,20 +122,49 @@ can be used to move across that link:
 | local (co-resident) | `HOSTS`↔, `RUNS_ON`↔, `INSTALLED_ON`↔, `ATTACHED_TO`↔ | Network, Adjacent, Local |
 | neutral | `DOCUMENTS`, `NOTE`, `OWNED_BY`, `LOCATED_IN` | none |
 
-A physical-only attack vector (AV:P) never allows lateral movement.
+A physical-only attack vector (AV:P) never allows lateral movement. Relationship types are matched
+case-insensitively (`connected-to` = `CONNECTED_TO`); any other type is treated as a one-way network
+link, so keep the Risk Assessment vocabulary aligned with this table.
 
-Entry points are assets that have the attribute `internet_facing=true` or `exposed=true`. If no
-asset is flagged, every asset with a network-exploitable CVE is treated as a possible entry point,
-and the output says so. The analysis then searches for paths of up to `TOPOLOGY_MAX_PATH_DEPTH`
-hops, scores them as step likelihood × target impact, and reports the choke-point assets that most
-paths pass through. The mapping lives in `app/engine/topology.py`. Adjust it to match the Risk
-Assessment vocabulary.
+From an asset the attacker holds, each step to a neighbour is one of:
+
+| Step | When | Likelihood | Path continues? |
+|---|---|---|---|
+| `exploit` | the neighbour has a CVE the channel allows (any CVE found, not only the top `limit`) | KEV / EPSS / CVSS | yes |
+| `transit` | the neighbour is network plumbing: `transit=true`, or `asset_type` switch / hub / vlan / segment … | 1 | yes, without compromising it |
+| `impact` | no usable CVE, but the relationship gives control: `HOSTS`, `CONTAINS`, `MANAGES`, `CONTROLS`, `SENDS_DATA_TO`, or the reverse of `RUNS_ON`, `INSTALLED_ON`, `PART_OF`, `DEPENDS_ON`, `USES` | 1 | no (the target is affected) |
+| `unassessed` | the neighbour has no vulnerability data (no CPE, or its analysis failed) | `TOPOLOGY_UNASSESSED_LIKELIHOOD` (0.3) | no (flagged) |
+
+An asset that was analysed and has no CVE usable over that link stops the path.
+
+Entry points are assets with `internet_facing=true` or `exposed=true` and a network-exploitable CVE.
+If no asset is flagged, every asset with a network-exploitable CVE is treated as a possible entry
+point, and the output says so. Paths are searched up to `TOPOLOGY_MAX_PATH_DEPTH` hops; for each
+(entry point, target) only the best path is kept. A path's score is 100 × the product of its step
+likelihoods × the target's impact. The impact comes from the asset attributes `criticality`
+(low / medium / high / critical, or 1–5) and `safety_critical=true` when the inventory has them,
+otherwise from the target's highest CVE risk score.
+
+The result adds `reachable_assets` (best outcome per asset, with its `safety_critical` flag),
+`unassessed_assets`, `transit_assets` and `exposed_unassessed`. Choke points are the assets *inside*
+the kept paths (not their entry or target), ranked by the total path score that crosses them.
+Without a `pilot` parameter, the pilot recorded on the topology in Risk Assessment is used.
+
+### Useful Risk Assessment attributes
+
+| Attribute | Effect |
+|---|---|
+| `internet_facing` / `exposed` = true | possible entry point |
+| `transit` = true, or `asset_type` = switch, hub, vlan, segment, … | relays traffic without being a target |
+| `criticality` = low … critical (or 1–5) | impact of reaching the asset |
+| `safety_critical` = true | impact 1.0, flagged in `reachable_assets` |
+| `pilot` | pilot profile for single-asset analysis |
 
 ## Tests and CI/CD
 
 | Layer | What | Where / when |
 |---|---|---|
-| Unit, API, contract | 67 tests with recorded fixtures, no network. Includes an OpenAPI check that fails if an endpoint is undocumented. Coverage gate 85%. | `tests/`, every PR (Python 3.11 + 3.12) |
+| Unit, API, contract | 89 tests with recorded fixtures, no network. Includes an OpenAPI check that fails if an endpoint is undocumented. Coverage gate 85%. | `tests/`, every PR (Python 3.11 + 3.12) |
 | End-to-end | Real Docker image against mock Risk Assessment/NVD (`docker-compose.e2e.yml`). Covers device analysis, persistence, CSV, and async topology analysis for all 5 pilots. | `tests/e2e/`, every PR |
 | Live sources | Real NVD, CISA KEV, FIRST EPSS and Groq (if `GROQ_API_KEY` is set). Catches upstream API changes. | `tests/live/`, nightly |
 | Static | ruff lint, CodeQL (security-extended), pip-audit on pinned dependencies | every PR |
@@ -165,12 +194,26 @@ most important ones:
 - `AUTH_ENABLED=true` with the `KEYCLOAK_*` settings. The service verifies bearer tokens against the
   realm JWKS and can require a role.
 - `CORS_ORIGINS`. Set it to the dashboard origin(s). CORS is off by default.
-- `NVD_RATE_LIMIT`. Requests per 30 seconds. Override it only for a local NVD mirror or mock.
+- `NVD_RATE_LIMIT`. Requests per 30 seconds. Override it for a local NVD mirror or mock, or to split
+  the limit between processes.
+- `PILOT_ROLE_PREFIX`. With auth on, e.g. `pilot:` makes role `pilot:<key>` (or `pilot:all`) necessary
+  to analyse a pilot or read its stored models, jobs and CSV exports.
+- `LLM_REDACT_ASSET_DETAILS=true`. Only product data from the CPE and asset ids are sent to the LLM
+  provider: no asset names, descriptions, roles or locations. Recommended for the nuclear and health pilots.
+- `JOB_MAX_PENDING` (20) and `JOB_TIMEOUT_SECONDS` (3600). More pending async jobs return 429; a job
+  that never finishes (e.g. lost in a restart) is reported as failed.
+- `KAFKA_SECURITY_PROTOCOL`, `KAFKA_SASL_*`, `KAFKA_SSL_*` for a secured event bus, and
+  `KAFKA_MAX_ATTEMPTS` (3) for transient failures before a request goes to the DLQ.
 - `RISK_ASSESSMENT_GET_ASSET_URL` and `RISK_ASSESSMENT_GET_TOPOLOGY_URL`. These are templates with
   `{asset_id}` / `{topology_id}` placeholders.
 
 ## Limitations
 
+- When NVD matches more than `NVD_MAX_RESULTS` CVEs (for example a wildcard Linux-kernel CPE),
+  the newest `NVD_MAX_RESULTS` plus every CISA KEV entry are ranked, and the output warns about it.
+- The NVD rate limiter, caches and async jobs are per process. The image runs one gunicorn
+  process with 16 threads; when running several containers or the Kafka worker with the same NVD
+  key, split `NVD_RATE_LIMIT` between them (the Compose file gives the API 35 and the worker 10).
 - Scenarios are LLM-generated. They are grounded in NVD, CWE and CAPEC data, but an analyst still
   has to review them before they go into a safety case.
 - NVD keyword search, used when no CPE is given, is noisy. Always supply CPEs in the Risk Assessment

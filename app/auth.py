@@ -65,3 +65,27 @@ def login_required(f):
         return f(*args, **kwargs)
 
     return wrapper
+
+
+class PilotForbidden(PermissionError):
+    """The caller has no role for this pilot."""
+
+
+def allowed_pilots():
+    """Pilot keys the current caller may access, or None for all of them.
+
+    Only enforced when AUTH_ENABLED and PILOT_ROLE_PREFIX are set: role "<prefix><pilot>"
+    grants one pilot, "<prefix>all" grants every pilot."""
+    cfg = current_app.config
+    prefix = cfg.get("PILOT_ROLE_PREFIX")
+    if not cfg.get("AUTH_ENABLED") or not prefix:
+        return None
+    roles = _roles(getattr(g, "user", None) or {}, cfg.get("KEYCLOAK_CLIENT_ID"))
+    if f"{prefix}all" in roles or f"{prefix}*" in roles:
+        return None
+    return {r[len(prefix):] for r in roles if r.startswith(prefix)}
+
+
+def check_pilot(pilot_key, allowed):
+    if allowed is not None and pilot_key not in allowed:
+        raise PilotForbidden(f"no access to pilot '{pilot_key}'")

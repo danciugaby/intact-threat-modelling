@@ -67,6 +67,7 @@ class ThreatModeler:
             api_key=cfg.get("GROQ_API_KEY"), temperature=cfg.get("LLM_TEMPERATURE", 0.3),
             timeout=cfg.get("LLM_TIMEOUT", 60), max_retries=cfg.get("LLM_MAX_RETRIES", 2),
             scenarios_per_cve=cfg.get("SCENARIOS_PER_CVE", 3),
+            redact=cfg.get("LLM_REDACT_ASSET_DETAILS", False),
         )
         self.pool = ThreadPoolExecutor(max_workers=max(1, cfg.get("LLM_MAX_CONCURRENCY", 4)),
                                        thread_name_prefix="llm")
@@ -94,6 +95,7 @@ class ThreatModeler:
             cves, method = self.nvd.search_by_cpe(device["cpe"]), "cpe"
         else:
             cves, method = self.nvd.search_by_keyword(device["deviceName"]), "keyword"
+        nvd_total, truncated = getattr(cves, "total", len(cves)), getattr(cves, "truncated", False)
         cves = filter_by_age(cves, self.cfg.get("CVE_MAX_AGE_YEARS", 0))
         total_found = len(cves)
         timings["threat_landscape"] = (datetime.now() - t0).total_seconds()
@@ -104,6 +106,7 @@ class ThreatModeler:
         scored = [(c, score_cve(c, pilot)) for c in cves]
         scored.sort(key=lambda cr: (-cr[1]["score"], -cr[0].published.timestamp()))
         selected = scored[:limit]
+        exploit_summary = _exploit_summary(scored)
         timings["risk_ranking"] = (datetime.now() - t0).total_seconds()
 
         # 3. mapping + scenarios (LLM calls in parallel, one per CVE)
@@ -118,11 +121,15 @@ class ThreatModeler:
             "pilot": {"key": pilot.key, "name": pilot.name, "safety_critical": pilot.safety_critical},
             "device": device,
             "vulnerabilities": vulnerabilities,
+            # best-ranked CVE per CVSS attack vector across *all* CVEs found, not only the
+            # top `limit`; topology analysis uses it to decide which links can be crossed
+            "exploitability_by_vector": exploit_summary,
             "summary": self._summary(vulnerabilities, pilot, total_found),
             "metadata": {
                 "generated_at": started.isoformat(),
                 "search_method": method,
                 "cves_found": total_found,
+                "nvd_total_results": nvd_total,
                 "cves_selected": len(vulnerabilities),
                 "selection": "risk-ranked (CVSS, KEV, EPSS, pilot C/I/A weighting, attack vector)",
                 "sources": {
@@ -137,9 +144,16 @@ class ThreatModeler:
                 "timings_seconds": timings,
             },
         }
+        warnings = []
         if method == "keyword":
-            model["metadata"]["warning"] = ("No CPE supplied: CVEs were found by keyword search on the device "
-                                            "name and may include unrelated products. Supply a CPE for accuracy.")
+            warnings.append("No CPE supplied: CVEs were found by keyword search on the device name and may "
+                            "include unrelated products. Supply a CPE for accuracy.")
+        if truncated:
+            warnings.append(f"NVD matched {nvd_total} CVEs; the newest {self.cfg.get('NVD_MAX_RESULTS', 2000)} plus "
+                            "all CISA KEV entries were ranked. Use a more specific CPE (with a version) "
+                            "or raise NVD_MAX_RESULTS.")
+        if warnings:
+            model["metadata"]["warning"] = " ".join(warnings)
         return model
 
     def analyze_topology(self, assets, pilot=None):
@@ -148,17 +162,21 @@ class ThreatModeler:
         pilot = self.resolve_pilot(pilot)
         graph = {}
         for aid, a in assets.items():
+            tm = a.get("threat_model")
             vulns = []
-            for v in (a.get("threat_model") or {}).get("vulnerabilities", []):
+            for v in (tm or {}).get("vulnerabilities", []):
                 r = v.get("risk", {})
                 vulns.append({
                     "id": v["id"], "attack_vector": r.get("attack_vector"), "score": r.get("score", 0),
                     "known_exploited": r.get("known_exploited"), "epss_percentile": r.get("epss_percentile"),
                 })
             graph[aid] = {"name": a.get("name"), "attributes": a.get("attributes") or {},
-                          "relationships": a.get("relationships") or [], "vulnerabilities": vulns}
+                          "relationships": a.get("relationships") or [], "vulnerabilities": vulns,
+                          "exploit_summary": (tm or {}).get("exploitability_by_vector") or {},
+                          "assessed": tm is not None}
         analysis = topo.analyze(graph, self.cfg.get("TOPOLOGY_MAX_PATH_DEPTH", 4),
-                                self.cfg.get("TOPOLOGY_MAX_PATHS", 25))
+                                self.cfg.get("TOPOLOGY_MAX_PATHS", 25),
+                                self.cfg.get("TOPOLOGY_UNASSESSED_LIKELIHOOD", topo.UNASSESSED_LIKELIHOOD))
         if self.cfg.get("TOPOLOGY_LLM_SUMMARY", True):
             analysis["summary"] = self.llm.topology_summary(pilot, analysis)
         return analysis
@@ -251,6 +269,17 @@ class ThreatModeler:
             "not_analysed": max(0, total_found - len(vulns)),
             "regulatory_references": list(pilot.standards),
         }
+
+
+def _exploit_summary(scored):
+    """{attack_vector: best CVE for that vector} over every scored CVE."""
+    out = {}
+    for cve, risk in scored:  # already sorted by score, best first
+        av = risk.get("attack_vector") or "unknown"
+        if av not in out:
+            out[av] = {"id": cve.id, "attack_vector": risk.get("attack_vector"), "score": risk["score"],
+                       "known_exploited": risk["known_exploited"], "epss_percentile": risk.get("epss_percentile")}
+    return out
 
 
 def _render(s):

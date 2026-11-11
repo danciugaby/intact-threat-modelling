@@ -32,6 +32,36 @@ def cvss_profile(metric):
     return {"av": p.get("AV"), "C": c, "I": i, "A": a}
 
 
+# CVSS v3.1 exploitability weights, reused to derive a comparable 0..3.9 value for metrics that
+# have no exploitability sub-score (CVSS v4.0 defines none).
+_EXPL_AV = {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.2}
+_EXPL_PR = {"N": 0.85, "L": 0.62, "H": 0.27}
+_EXPL_MAX = 3.887  # 8.22 * .85 * .77 * .85 * .85
+
+
+def exploitability_proxy(cve):
+    """0..1 exploitability from CVSS, comparable across versions.
+
+    Order: a v3.x exploitability sub-score from any metric on the CVE (NVD's or the CNA's),
+    else a value computed from the primary vector (v4: AT:P counts like AC:H; UI:P/A like UI:R),
+    else None. v2 sub-scores are on a 0-10 scale and are rescaled."""
+    for m in cve.cvss:
+        if m.exploitability is not None and m.version.startswith("3"):
+            return min(1.0, float(m.exploitability) / 3.9)
+    metric = cve.primary_cvss
+    if metric is None:
+        return None
+    p = metric.parts()
+    if metric.version.startswith("2"):
+        return min(1.0, float(metric.exploitability) / 10.0) if metric.exploitability is not None else None
+    if p.get("AV") not in _EXPL_AV:
+        return None
+    ac = 0.44 if p.get("AC") == "H" or p.get("AT") == "P" else 0.77
+    ui = 0.85 if p.get("UI", "N") == "N" else 0.62
+    pr = _EXPL_PR.get(p.get("PR"), 0.62)
+    return min(1.0, 8.22 * _EXPL_AV[p["AV"]] * ac * pr * ui / _EXPL_MAX)
+
+
 def score_cve(cve, pilot):
     metric = cve.primary_cvss
     prof = cvss_profile(metric)
@@ -51,8 +81,8 @@ def score_cve(cve, pilot):
         exploit = cve.epss_percentile
         rationale.append(f"EPSS {cve.epss:.3f} (percentile {cve.epss_percentile:.2f})")
     else:
-        expl = (metric.exploitability if metric and metric.exploitability else None)
-        exploit = min(0.5, (expl / 3.9) * 0.5) if expl else 0.25
+        proxy = exploitability_proxy(cve)
+        exploit = 0.5 * proxy if proxy is not None else 0.25
         rationale.append("No exploitation data (KEV/EPSS); using CVSS exploitability proxy")
 
     w = pilot.cia_weights
