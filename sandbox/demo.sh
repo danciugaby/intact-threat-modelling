@@ -5,6 +5,12 @@ API=${API:-http://127.0.0.1:5000}
 PILOT=${1:-health}
 j() { python -m json.tool --no-ensure-ascii; }
 
+# Start the sandbox if it isn't running (e.g. after a Codespace restart).
+if ! curl -fsS "$API/health" >/dev/null 2>&1; then
+  echo "API not running on $API - starting the sandbox..."
+  bash "$(dirname "$0")/start.sh"
+fi
+
 echo "== Health";  curl -fsS "$API/health" | j
 echo "== Pilots";  curl -fsS "$API/pilots" | python -c 'import json,sys; [print(" ", p["key"], "-", p["name"]) for p in json.load(sys.stdin)]'
 

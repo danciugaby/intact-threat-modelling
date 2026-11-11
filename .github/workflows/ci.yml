@@ -68,7 +68,7 @@ jobs:
           python-version: "3.12"
       - run: pip install pip-audit
       - name: Audit pinned dependencies for known vulnerabilities
-        run: pip-audit -r requirements.txt --strict --progress-spinner off
+        run: pip-audit -r requirements.txt -r requirements-kafka.txt --strict --progress-spinner off
 
   e2e:
     needs: [lint, test]
