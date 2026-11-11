@@ -99,6 +99,7 @@ def health():
         "status": "ok" if db_ok else "degraded",
         "database": db_ok,
         "cwe_version": tm.cwe.version,
+        "cwe_weaknesses": len(tm.cwe.weaknesses),
         "capec_loaded": bool(tm.capec.patterns),
         "llm": current_app.config.get("LLM_PROVIDER") if tm.llm.enabled else "disabled",
         "nvd_api_key": bool(current_app.config.get("NVD_API_KEY")),

@@ -86,6 +86,14 @@
 - The topology pilot recorded in Risk Assessment is used when the request names none.
 
 **Bugs**
+- **CWE 5.0.** MITRE released CWE 5.0 on 28 Oct 2026, on XML schema 8, which uses a new namespace.
+  The parser loaded 0 weaknesses from it. Every image built since then (including the Dependabot
+  CI runs from 4 Nov) produced threat models without CWE names, mitigations or CAPEC/ATT&CK
+  mappings, and the container e2e test failed.
+  - Elements are now matched by local name, and IDs may be written as `CWE-79`.
+  - `scripts/update_data.py` refuses a catalogue it cannot parse, so the image build fails
+    instead of shipping an empty catalogue.
+  - `/health` reports `cwe_weaknesses`.
 - A Risk Assessment topology returned as a bare JSON list no longer crashes the analysis.
 - `offset` is no longer capped at 1000 on `/threat-models` and `/datasets/*`.
 

@@ -391,3 +391,39 @@ def test_redaction_keeps_asset_identity_out_of_llm_prompts(make_app):
 
 def test_no_redaction_by_default():
     assert ScenarioGenerator(provider="none").redact is False
+
+
+# ------------------------------------------------------------------ CWE 5.0 / schema 8
+def test_cwe_parser_does_not_depend_on_the_schema_namespace(tmp_path, cwe_catalog):
+    """CWE 5.0 (Oct 2026) moved to XML schema 8 with a new namespace; the old parser loaded
+    0 weaknesses from it, so every model lost its CWE names, mitigations and CAPEC links."""
+    import os
+
+    from app.engine.catalogs import CweCatalog
+    from conftest import FIX
+
+    src = open(os.path.join(FIX, "cwec_sample.xml"), encoding="utf-8").read()
+    v8 = src.replace("http://cwe.mitre.org/cwe-7", "http://cwe.mitre.org/cwe-8")
+    v8 = v8.replace('<Weakness ID="', '<Weakness ID="CWE-')
+    path = tmp_path / "cwec_v5.0.xml"
+    path.write_text(v8, encoding="utf-8")
+    new = CweCatalog(str(path))
+    assert new.namespace == "http://cwe.mitre.org/cwe-8"
+    assert set(new.weaknesses) == set(cwe_catalog.weaknesses) and new.weaknesses
+    for wid, w in cwe_catalog.weaknesses.items():
+        assert new.weaknesses[wid] == w
+    assert new.get("CWE-78") == cwe_catalog.get(78)
+
+
+def test_unreadable_cwe_catalogue_is_reported(tmp_path, caplog):
+    from app.engine.catalogs import CweCatalog
+
+    path = tmp_path / "empty.xml"
+    path.write_text('<Weakness_Catalog xmlns="urn:x" Version="9"><Weaknesses/></Weakness_Catalog>')
+    assert CweCatalog(str(path)).weaknesses == {}
+    assert "contains no weaknesses" in caplog.text
+
+
+def test_health_reports_cwe_weakness_count(make_app):
+    body = make_app().test_client().get("/health").get_json()
+    assert body["cwe_weaknesses"] > 0

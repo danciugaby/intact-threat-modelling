@@ -17,7 +17,8 @@ ARG FETCH_DATA=1
 RUN if [ "$FETCH_DATA" = "1" ]; then python scripts/update_data.py --dest data; fi \
  && ls data/cwec_*.xml > /dev/null
 
-RUN useradd --uid 10001 --no-create-home appuser && chown -R appuser /app/data
+# a home directory: gunicorn's control server needs a writable place for its socket
+RUN useradd --uid 10001 --create-home appuser && chown -R appuser /app/data
 USER appuser
 
 EXPOSE 5000
