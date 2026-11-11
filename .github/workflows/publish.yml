@@ -15,6 +15,9 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
+  # Scanner image, pinned. Its signature is verified before it runs (the aquasec/trivy
+  # "latest" tag on Docker Hub was backdoored in March 2026). Bump deliberately.
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.71.0
 
 jobs:
   image:
@@ -23,7 +26,6 @@ jobs:
       contents: read
       packages: write
       id-token: write          # keyless cosign signing
-      security-events: write   # upload Trivy results to code scanning
       attestations: write
     outputs:
       digest: ${{ steps.build.outputs.digest }}
@@ -72,24 +74,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Scan image with Trivy
-        run: |
-          docker run --rm -v "$PWD:/out" \
-            -e TRIVY_USERNAME="${{ github.actor }}" -e TRIVY_PASSWORD="${{ secrets.GITHUB_TOKEN }}" \
-            aquasec/trivy:latest image --ignore-unfixed --severity CRITICAL,HIGH \
-            --format sarif --output /out/trivy.sarif \
-            "${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}"
-          docker run --rm \
-            -e TRIVY_USERNAME="${{ github.actor }}" -e TRIVY_PASSWORD="${{ secrets.GITHUB_TOKEN }}" \
-            aquasec/trivy:latest image --ignore-unfixed --severity CRITICAL --exit-code 0 \
-            "${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY" || true
-
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy.sarif') != ''
-        with:
-          sarif_file: trivy.sarif
-          category: trivy-image
-
       - uses: sigstore/cosign-installer@v3
       - name: Sign image (keyless, GitHub OIDC)
         run: cosign sign --yes "${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}"
@@ -104,6 +88,38 @@ jobs:
             echo '```'
             echo "Verify: \`cosign verify ${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }} --certificate-identity-regexp 'https://github.com/${{ github.repository }}/' --certificate-oidc-issuer https://token.actions.githubusercontent.com\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  scan:
+    # Separate job with a read-only token: the scanner never sees credentials that can push.
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: Verify the scanner image signature
+        run: |
+          cosign verify "$TRIVY_IMAGE" \
+            --certificate-identity-regexp '^https://github\.com/aquasecurity/' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+      - name: Scan image with Trivy
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMAGE="${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}"
+          docker run --rm -v "$PWD:/out" -e TRIVY_USERNAME -e TRIVY_PASSWORD "$TRIVY_IMAGE" image \
+            --ignore-unfixed --severity CRITICAL,HIGH --format sarif --output /out/trivy.sarif "$IMAGE"
+          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "$TRIVY_IMAGE" image \
+            --ignore-unfixed --severity CRITICAL --exit-code 0 "$IMAGE" >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy.sarif') != ''
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-image
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

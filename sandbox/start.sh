@@ -18,9 +18,20 @@ stop() {
 if [ "${1:-}" = "stop" ]; then stop; echo "sandbox stopped"; exit 0; fi
 stop
 
+PY=$(command -v python3 || command -v python)
+
+# Install dependencies if they are missing (e.g. the Codespace's postCreateCommand failed).
+if ! "$PY" -c "import flask, gunicorn, requests, groq, jwt, flask_sqlalchemy" >/dev/null 2>&1; then
+  echo "Installing Python dependencies (first run)..."
+  "$PY" -m pip install -q -r requirements-dev.txt || {
+    echo "pip install failed - see the errors above." >&2
+    exit 1
+  }
+fi
+
 if ! ls data/cwec_*.xml >/dev/null 2>&1; then
   echo "Downloading MITRE CWE/CAPEC catalogues..."
-  python scripts/update_data.py --dest data || {
+  "$PY" scripts/update_data.py --dest data || {
     echo "Download failed; using the small test catalogue (fewer CWE names/mitigations)."
     cp tests/fixtures/cwec_sample.xml data/cwec_sample.xml
     export CWEC_FILE_PATH=data/cwec_sample.xml
@@ -42,9 +53,12 @@ if [ "${OFFLINE:-0}" = "1" ]; then
   export NVD_API_URL="$MOCK/nvd/rest/json/cves/2.0" NVD_RATE_LIMIT=1000 KEV_ENABLED=false EPSS_ENABLED=false
 fi
 
-nohup python sandbox/mock_services.py --host 127.0.0.1 --port 5100 > "$RUN/mock.log" 2>&1 &
+# setsid + nohup fully detach the servers: Codespaces kills processes left in the
+# lifecycle command's session when postStartCommand returns.
+setsid nohup "$PY" sandbox/mock_services.py --host 127.0.0.1 --port 5100 > "$RUN/mock.log" 2>&1 < /dev/null &
 echo $! > "$RUN/mock.pid"
-nohup gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 8 --timeout 600 run:app > "$RUN/api.log" 2>&1 &
+setsid nohup "$PY" -m gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 8 --timeout 600 run:app \
+  > "$RUN/api.log" 2>&1 < /dev/null &
 echo $! > "$RUN/api.pid"
 
 for _ in $(seq 1 60); do

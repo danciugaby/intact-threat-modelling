@@ -31,7 +31,8 @@ def create_app(config_object=Config, threat_modeler=None):
 
     from .jobs import JobRunner
 
-    app.extensions["job_runner"] = JobRunner(app, app.config.get("JOB_WORKERS", 2))
+    app.extensions["job_runner"] = JobRunner(app, app.config.get("JOB_WORKERS", 2),
+                                             app.config.get("JOB_MAX_PENDING", 20))
 
     from .api.routes import bp
 

@@ -78,11 +78,16 @@ class Config:
     LLM_MAX_RETRIES = _int("LLM_MAX_RETRIES", 2)
     LLM_MAX_CONCURRENCY = _int("LLM_MAX_CONCURRENCY", 4)
     SCENARIOS_PER_CVE = _int("SCENARIOS_PER_CVE", 3)
+    # Send only product data (from the CPE) and asset ids to the LLM provider - no asset names,
+    # descriptions, roles or locations. Recommended for sensitive pilots (nuclear, health).
+    LLM_REDACT_ASSET_DETAILS = _bool("LLM_REDACT_ASSET_DETAILS", False)
 
     # ---- Topology analysis ------------------------------------------------------------
     TOPOLOGY_MAX_PATH_DEPTH = _int("TOPOLOGY_MAX_PATH_DEPTH", 4)
     TOPOLOGY_MAX_PATHS = _int("TOPOLOGY_MAX_PATHS", 25)
     TOPOLOGY_LLM_SUMMARY = _bool("TOPOLOGY_LLM_SUMMARY", True)
+    # Likelihood given to a step into an asset with no vulnerability data (no CPE).
+    TOPOLOGY_UNASSESSED_LIKELIHOOD = _float("TOPOLOGY_UNASSESSED_LIKELIHOOD", 0.3)
 
     # ---- Database -------------------------------------------------------------------------
     SQLALCHEMY_DATABASE_URI = os.getenv(
@@ -93,6 +98,10 @@ class Config:
 
     # ---- Background jobs --------------------------------------------------------------------
     JOB_WORKERS = _int("JOB_WORKERS", 2)
+    # Max queued + running async jobs per process; more returns 429.
+    JOB_MAX_PENDING = _int("JOB_MAX_PENDING", 20)
+    # A job still queued/running after this long is reported as failed (e.g. lost in a restart).
+    JOB_TIMEOUT_SECONDS = _int("JOB_TIMEOUT_SECONDS", 3600)
 
     # ---- Security ---------------------------------------------------------------------------
     SECRET_KEY = os.getenv("SECRET_KEY") or os.urandom(32).hex()
@@ -101,6 +110,9 @@ class Config:
     KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "")
     KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID")  # expected audience / azp
     KEYCLOAK_REQUIRED_ROLE = os.getenv("KEYCLOAK_REQUIRED_ROLE")  # optional realm or client role
+    # Per-pilot access: with e.g. PILOT_ROLE_PREFIX=pilot: a user needs role "pilot:<key>"
+    # (or "pilot:all") to analyse that pilot or read its stored models, jobs and exports.
+    PILOT_ROLE_PREFIX = os.getenv("PILOT_ROLE_PREFIX") or None
     CORS_ORIGINS = _list("CORS_ORIGINS", "")  # empty = CORS disabled
     MAX_CONTENT_LENGTH = _int("MAX_CONTENT_LENGTH", 1024 * 1024)
 
@@ -119,6 +131,17 @@ class Config:
     KAFKA_RESULT_TOPIC = os.getenv("KAFKA_RESULT_TOPIC", "threat-modeling-results")
     KAFKA_DLQ_TOPIC = os.getenv("KAFKA_DLQ_TOPIC", "threat-modeling-dlq")
     KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "threat-modeling-group")
+    # Secured brokers (e.g. SASL_SSL + SCRAM-SHA-512); unset = PLAINTEXT
+    KAFKA_SECURITY_PROTOCOL = os.getenv("KAFKA_SECURITY_PROTOCOL")
+    KAFKA_SASL_MECHANISM = os.getenv("KAFKA_SASL_MECHANISM")
+    KAFKA_SASL_USERNAME = os.getenv("KAFKA_SASL_USERNAME")
+    KAFKA_SASL_PASSWORD = os.getenv("KAFKA_SASL_PASSWORD")
+    KAFKA_SSL_CA_LOCATION = os.getenv("KAFKA_SSL_CA_LOCATION")
+    KAFKA_SSL_CERT_LOCATION = os.getenv("KAFKA_SSL_CERT_LOCATION")
+    KAFKA_SSL_KEY_LOCATION = os.getenv("KAFKA_SSL_KEY_LOCATION")
+    # Retries for transient failures (NVD / Risk Assessment unavailable) before the DLQ
+    KAFKA_MAX_ATTEMPTS = _int("KAFKA_MAX_ATTEMPTS", 3)
+    KAFKA_RETRY_BACKOFF = _float("KAFKA_RETRY_BACKOFF", 5)
 
     API_NAME = "INTACT Threat Modelling API"
     API_VERSION = "2.0.0"

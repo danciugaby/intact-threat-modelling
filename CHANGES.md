@@ -64,3 +64,67 @@
 - **Security:** bumped `cryptography` to 50.0.1, `PyJWT` to 2.13.0 and `python-dotenv` to 1.2.3.
   pip-audit reported known vulnerabilities in the previous pins.
 - **Config:** added `NVD_RATE_LIMIT`, which overrides the NVD request rate for mirrors and mocks.
+
+## v2.2 – review fixes (November 2026)
+
+**Results**
+- NVD returns matches oldest first. When there are more than `NVD_MAX_RESULTS`, the newest window plus
+  every CISA KEV entry is now ranked (previously only the oldest CVEs were), and the output warns about it.
+  Paging no longer stops early on rejected records.
+- The CVSS exploitability proxy no longer drops when a CNA adds a CVSS v4 score (v4 has no exploitability
+  sub-score): a v3.x sub-score is used when present, else one is derived from the vector. v2 sub-scores
+  are rescaled from 0–10.
+- Topology analysis:
+  - Assets with no vulnerability data now become flagged `unassessed` targets instead of silently
+    breaking paths. In the demo topologies the MRI console, fuel-cell ECU and radiation sensors are now
+    reported as reachable.
+  - Transit assets (switches, VLANs …) relay traffic.
+  - Control relationships (`MANAGES`, `HOSTS`, `DEPENDS_ON` …) propagate impact.
+  - Every CVE found counts for lateral steps, not only the top `limit`.
+  - The target's impact comes from `criticality` / `safety_critical` when present.
+  - Only the best path per (entry, target) is kept, and choke points exclude entry and target assets.
+- The topology pilot recorded in Risk Assessment is used when the request names none.
+
+**Bugs**
+- **CWE 5.0.** MITRE released CWE 5.0 on 28 Oct 2026, on XML schema 8, which uses a new namespace.
+  The parser loaded 0 weaknesses from it. Every image built since then (including the Dependabot
+  CI runs from 4 Nov) produced threat models without CWE names, mitigations or CAPEC/ATT&CK
+  mappings, and the container e2e test failed.
+  - Elements are now matched by local name, and IDs may be written as `CWE-79`.
+  - `scripts/update_data.py` refuses a catalogue it cannot parse, so the image build fails
+    instead of shipping an empty catalogue.
+  - `/health` reports `cwe_weaknesses`.
+- A Risk Assessment topology returned as a bare JSON list no longer crashes the analysis.
+- `offset` is no longer capped at 1000 on `/threat-models` and `/datasets/*`.
+
+**Security and operations**
+- Dependencies: PyJWT 2.15.1, Werkzeug 3.1.9 and the rest of the Dependabot group. pip-audit is clean.
+- Per-pilot access control (`PILOT_ROLE_PREFIX`) for analyses, stored models, jobs and CSV exports.
+- Async jobs: at most `JOB_MAX_PENDING` per process (then 429); stale jobs are reported as failed.
+- Kafka worker:
+  - SASL/TLS settings.
+  - Transient failures are retried before the DLQ.
+  - The offset is only committed once the result was delivered (otherwise the message is re-read).
+- `LLM_REDACT_ASSET_DETAILS` keeps asset names and locations out of LLM prompts.
+- Publish/nightly workflows:
+  - The scanner runs in a separate job with a read-only token.
+  - The scanner image is pinned and its signature is verified. `aquasec/trivy:latest` was backdoored
+    in March 2026.
+- Compose:
+  - `apache/kafka` replaces the withdrawn `bitnami/kafka` tags.
+  - The API binds to localhost.
+  - The NVD rate is split between the API and the worker.
+- The image runs one gunicorn process with 16 threads, so the NVD rate limiter, caches and jobs
+  are shared.
+- Merged the `fix-codespace-sandbox` branch (the Kafka client is an optional dependency, and the
+  sandbox starts reliably).
+
+**Compatibility**
+- Topology results gain the following:
+  - `paths_total`, `reachable_assets`, `unassessed_assets`, `transit_assets`, `exposed_unassessed`
+    and `notes`.
+  - Attack paths gain `asset_ids`, `target`, `outcome` and `target_impact`.
+  - Steps gain `kind`, `from_id` and `to_id`.
+- `attack_paths` now holds the best path per (entry, target) instead of every prefix.
+- Choke points no longer list the entry asset.
+- Threat models gain `exploitability_by_vector` and `metadata.nvd_total_results`.

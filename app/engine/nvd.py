@@ -66,6 +66,19 @@ class CveRecord:
         return self.id
 
 
+class CveList(list):
+    """A list of CveRecords that also says whether NVD had more matches than were fetched."""
+
+    total = 0  # matches reported by NVD
+    truncated = False  # True when only the newest window (+ KEV entries) was fetched
+
+    @classmethod
+    def of(cls, items, total, truncated=False):
+        out = cls(items)
+        out.total, out.truncated = total, truncated
+        return out
+
+
 def _parse_dt(value):
     if not value:
         return datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -162,33 +175,60 @@ class NvdClient:
             h["apiKey"] = self.api_key
         return h
 
+    def _page(self, params, start, size, flags=()):
+        """One NVD request. ``flags`` are value-less parameters such as ``hasKev``."""
+        url = self.api_url + ("?" + "&".join(flags) if flags else "")
+        page = dict(params, startIndex=start, resultsPerPage=size)
+        data = get_json(self.session, url, params=page, headers=self._headers(),
+                        timeout=self.timeout, limiter=self.limiter)
+        if not data:
+            return [], 0, 0
+        out, items = [], data.get("vulnerabilities", [])
+        for v in items:
+            try:
+                rec = parse_cve(v)
+                if rec.status.lower() != "rejected":
+                    out.append(rec)
+            except (KeyError, TypeError, ValueError) as exc:
+                log.warning("Skipping unparsable NVD record: %s", exc)
+        return out, len(items), int(data.get("totalResults", 0) or 0)
+
+    def _collect(self, params, start, end, flags=()):
+        """Fetch records ``start``..``end`` (exclusive) page by page."""
+        out = []
+        while start < end:
+            recs, raw, total = self._page(params, start, min(self.PAGE_SIZE, end - start), flags)
+            out.extend(recs)
+            if raw == 0:
+                break
+            start += raw
+            end = min(end, total)
+        return out
+
     def _search(self, params):
+        """All matches if there are at most ``max_results``. Otherwise the newest ``max_results``
+        plus every match listed in CISA KEV: NVD returns results oldest first, so a plain
+        "first N" would rank only the oldest CVEs."""
         cache_key = tuple(sorted(params.items()))
         cached = self.cache.get(cache_key)
         if cached is not None:
             return cached
-        results, start = [], 0
-        while True:
-            page = dict(params, startIndex=start, resultsPerPage=min(self.PAGE_SIZE, self.max_results))
-            data = get_json(self.session, self.api_url, params=page, headers=self._headers(),
-                            timeout=self.timeout, limiter=self.limiter)
-            if not data:
-                break
-            vulns = data.get("vulnerabilities", [])
-            for v in vulns:
-                try:
-                    rec = parse_cve(v)
-                    if rec.status.lower() != "rejected":
-                        results.append(rec)
-                except (KeyError, TypeError, ValueError) as exc:
-                    log.warning("Skipping unparsable NVD record: %s", exc)
-            total = int(data.get("totalResults", 0))
-            start += len(vulns)
-            if not vulns or start >= total or len(results) >= self.max_results:
-                if total > self.max_results:
-                    log.warning("NVD returned %d CVEs for %s; only the first %d are ranked",
-                                total, params, self.max_results)
-                break
+        first, raw, total = self._page(params, 0, min(self.PAGE_SIZE, self.max_results))
+        if total <= self.max_results:
+            rest = self._collect(params, raw, total) if raw else []
+            results = CveList.of(first + rest, total)
+        else:
+            newest = self._collect(params, total - self.max_results, total)
+            try:
+                kev = self._collect(params, 0, 10 * self.PAGE_SIZE, flags=("hasKev",))
+            except UpstreamError as exc:  # the newest window is still useful on its own
+                log.warning("NVD hasKev query failed for %s: %s", params, exc)
+                kev = []
+            merged = {c.id: c for c in kev}
+            merged.update({c.id: c for c in newest})
+            results = CveList.of(merged.values(), total, truncated=True)
+            log.warning("NVD returned %d CVEs for %s; ranking the newest %d plus %d known-exploited",
+                        total, params, len(newest), len(kev))
         self.cache.set(cache_key, results)
         return results
 
@@ -210,7 +250,7 @@ class NvdClient:
     def search_by_keyword(self, keyword):
         keyword = " ".join(str(keyword).split())[:200]
         if not keyword:
-            return []
+            return CveList()
         return self._search({"keywordSearch": keyword})
 
     def get_cve(self, cve_id):
@@ -222,8 +262,9 @@ def filter_by_age(cves, max_age_years):
     if not max_age_years:
         return cves
     cutoff = datetime.now(timezone.utc) - timedelta(days=365 * max_age_years)
-    return [c for c in cves if c.published >= cutoff]
+    return CveList.of([c for c in cves if c.published >= cutoff], getattr(cves, "total", len(cves)),
+                      getattr(cves, "truncated", False))
 
 
-__all__ = ["NvdClient", "CveRecord", "CvssMetric", "parse_cve", "is_valid_cpe", "UpstreamError",
+__all__ = ["NvdClient", "CveRecord", "CveList", "CvssMetric", "parse_cve", "is_valid_cpe", "UpstreamError",
            "filter_by_age"]

@@ -7,3 +7,5 @@ data/*.db
 .pytest_cache/
 # MITRE catalogues are downloaded by scripts/update_data.py (see README)
 data/*.xml
+.coverage
+coverage.xml

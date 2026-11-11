@@ -46,6 +46,15 @@ def create_mock_app():
             out["cpe23name"] = a["cpe23name"]
         return out
 
+    @app.get("/")
+    def index():
+        return {
+            "service": "Mock INTACT Risk Assessment + offline NVD (sandbox only)",
+            "api_docs": "The threat-modelling API itself runs on port 5000: /api/docs",
+            "endpoints": ["/health", "/ra/topologies/<pilot>/assets", "/ra/assets/<asset_id>", "/nvd/rest/json/cves/2.0"],
+            "topologies": sorted(topologies),
+        }
+
     @app.get("/health")
     def health():
         return {"status": "ok", "topologies": sorted(topologies)}

@@ -38,7 +38,10 @@ class RiskAssessmentClient:
             # don't echo upstream bodies to API clients
             log.warning("Risk Assessment %s -> %s: %s", url, resp.status_code, resp.text[:500])
             raise RiskAssessmentError(f"Risk Assessment service returned HTTP {resp.status_code}")
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError:
+            raise RiskAssessmentError("Risk Assessment service returned invalid JSON")
 
     @staticmethod
     def _fill(template, **values):
@@ -57,10 +60,24 @@ class RiskAssessmentClient:
         return self._get(self._fill(self.asset_url, asset_id=asset_id))
 
     def get_topology(self, topology_id):
+        return self.get_topology_info(topology_id)[0]
+
+    def get_topology_info(self, topology_id):
+        """Return (asset entries, metadata). Accepts ``{"content": [...], "pilot": ...}``,
+        ``{"assets": [...]}`` or a bare list of ``{"id": ...}`` entries / ids."""
         if not self.topology_url:
             raise RiskAssessmentError("RISK_ASSESSMENT_GET_TOPOLOGY_URL is not configured", 503)
         data = self._get(self._fill(self.topology_url, topology_id=topology_id))
-        return data.get("content", data if isinstance(data, list) else [])
+        meta = {}
+        if isinstance(data, dict):
+            meta = {k: data.get(k) for k in ("id", "name", "pilot") if data.get(k) is not None}
+            entries = data.get("content", data.get("assets", []))
+        elif isinstance(data, list):
+            entries = data
+        else:
+            entries = []
+        entries = [e if isinstance(e, dict) else {"id": e} for e in entries or [] if e is not None]
+        return entries, meta
 
     @staticmethod
     def asset_to_device(asset):

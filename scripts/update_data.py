@@ -12,6 +12,9 @@ import zipfile
 
 import requests
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from app.engine.catalogs import CapecCatalog, CweCatalog  # noqa: E402
+
 CWE_URL = "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
 CAPEC_URL = "https://capec.mitre.org/data/xml/capec_latest.xml"
 
@@ -37,6 +40,16 @@ def main():
     with open(os.path.join(dest, "capec_latest.xml"), "wb") as f:
         f.write(r.content)
     print(f"CAPEC -> {os.path.join(dest, 'capec_latest.xml')}")
+    # Refuse a catalogue the engine cannot read (e.g. a new MITRE schema), so the image build
+    # fails loudly instead of shipping threat models without CWE names and mitigations.
+    cwe = CweCatalog(latest)
+    capec = CapecCatalog(os.path.join(dest, "capec_latest.xml"))
+    print(f"Parsed CWE {cwe.version}: {len(cwe.weaknesses)} weaknesses "
+          f"({sum(1 for w in cwe.weaknesses.values() if w['mitigations'])} with mitigations); "
+          f"CAPEC {capec.version}: {len(capec.patterns)} patterns")
+    if len(cwe.weaknesses) < 100 or not capec.patterns:
+        print("ERROR: the downloaded catalogues could not be parsed; update app/engine/catalogs.py", file=sys.stderr)
+        return 1
     print("Set CWEC_FILE_PATH=data/cwec_latest.xml to use the refreshed CWE catalogue.")
     return 0
 

@@ -4,6 +4,8 @@ from datetime import datetime
 
 from flask import current_app
 
+from .auth import check_pilot
+from .engine.modeler import InvalidInput
 from .models import ThreatModelRecord, db
 from .risk_assessment import RiskAssessmentClient, RiskAssessmentError
 
@@ -26,36 +28,50 @@ def _persist(model, asset_id=None):
     return model
 
 
-def analyze_device(device_data, pilot=None, limit=None):
+def analyze_device(device_data, pilot=None, limit=None, allowed_pilots=None):
+    tm = modeler()
+    if allowed_pilots is not None:
+        check_pilot(tm.resolve_pilot(pilot or device_data.get("pilot") or device_data.get("sector")).key,
+                    allowed_pilots)
     start = datetime.now()
-    model = modeler().get_threat_model(device_data, pilot=pilot, limit=limit)
+    model = tm.get_threat_model(device_data, pilot=pilot, limit=limit)
     model["BENCHMARK_COMPUTE_TIME"] = (datetime.now() - start).total_seconds()
     model["BENCHAMRK_COMPUTE_TIME"] = model["BENCHMARK_COMPUTE_TIME"]  # legacy misspelt key
     return _persist(model)
 
 
-def analyze_asset(asset_id, pilot=None, limit=None):
+def analyze_asset(asset_id, pilot=None, limit=None, allowed_pilots=None):
     ra = RiskAssessmentClient(current_app.config)
     asset = ra.get_asset(asset_id)
     device, _attrs = ra.asset_to_device(asset)
     if not device.get("cpe") and not device.get("deviceName"):
         raise RiskAssessmentError("asset has neither a CPE nor a name", 422)
+    tm = modeler()
+    pilot = tm.resolve_pilot(pilot or _attrs.get("pilot")).key
+    check_pilot(pilot, allowed_pilots)
     start = datetime.now()
-    model = modeler().get_threat_model(device, pilot=pilot or _attrs.get("pilot"), limit=limit)
+    model = tm.get_threat_model(device, pilot=pilot, limit=limit)
     model["asset_id"] = asset_id
     model["BENCHMARK_COMPUTE_TIME"] = (datetime.now() - start).total_seconds()
     model["BENCHAMRK_COMPUTE_TIME"] = model["BENCHMARK_COMPUTE_TIME"]
     return _persist(model, asset_id=str(asset_id))
 
 
-def analyze_topology(topology_id, pilot=None, limit=None):
+def analyze_topology(topology_id, pilot=None, limit=None, allowed_pilots=None):
     ra = RiskAssessmentClient(current_app.config)
-    entries = ra.get_topology(topology_id)
+    entries, meta = ra.get_topology_info(topology_id)
     if not entries:
         raise RiskAssessmentError("Topology empty or not found", 404)
 
     tm = modeler()
+    notes = []
+    if not pilot and meta.get("pilot"):  # the pilot recorded on the topology in Risk Assessment
+        try:
+            pilot = tm.resolve_pilot(meta["pilot"]).key
+        except InvalidInput:
+            notes.append(f"Topology pilot '{str(meta['pilot'])[:40]}' is not a known profile; using the default.")
     pilot_profile = tm.resolve_pilot(pilot)
+    check_pilot(pilot_profile.key, allowed_pilots)
     results, assets = [], {}
     device_time = 0.0
     for entry in entries:
@@ -73,8 +89,8 @@ def analyze_topology(topology_id, pilot=None, limit=None):
                 "relationships": ra.relationships(asset), "threat_model": None}
         assets[asset_id] = node
         if not device.get("cpe"):
-            # Kept in the graph (it can still relay an attack) but not analysed:
-            # keyword search on free-text asset names is too noisy for a topology.
+            # Kept in the graph as "unassessed" (paths can reach it, and transit assets relay
+            # traffic) but not analysed: keyword search on free-text names is too noisy here.
             results.append({"asset_id": asset_id, "name": node["name"],
                             "warning": "Asset has no CPE; not analysed for vulnerabilities"})
             continue
@@ -99,10 +115,16 @@ def analyze_topology(topology_id, pilot=None, limit=None):
         # legacy key: list of single-hop moves {asset_id, vulnerability_id, threat_id}
         "topology_analysis": analysis["lateral_moves"] or "No feasable attacks found",
         "attack_paths": analysis["attack_paths"],
+        "paths_total": analysis["paths_total"],
         "entry_points": analysis["entry_points"],
         "entry_point_assumption": analysis["entry_point_assumption"],
+        "exposed_unassessed": analysis["exposed_unassessed"],
+        "reachable_assets": analysis["reachable_assets"],
         "choke_points": analysis["choke_points"],
+        "unassessed_assets": analysis["unassessed_assets"],
+        "transit_assets": analysis["transit_assets"],
         "summary": analysis.get("summary"),
+        "notes": notes,
         "topology_analysis_time": topo_time,
         "device_compute_time": device_time,
         "total_compute_time": device_time + topo_time,

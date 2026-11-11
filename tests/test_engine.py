@@ -227,7 +227,9 @@ def test_topology_paths_respect_attack_vectors():
     assert not any("MRI (mri)" in p for p in chains)
     # DOCUMENTS is security-neutral
     assert not any("Wiki (wiki)" in p for p in chains)
-    assert r["choke_points"][0]["asset"] == "Firewall (fw)"
+    # choke points are the assets *inside* paths, not the entry point itself
+    assert r["choke_points"][0]["asset"] == "PACS (pacs)"
+    assert all(c["asset_id"] != "fw" for c in r["choke_points"])
     legacy = r["lateral_moves"][0]
     assert set(legacy) >= {"asset_id", "vulnerability_id", "threat_id"}
 
